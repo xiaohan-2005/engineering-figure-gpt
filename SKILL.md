@@ -22,13 +22,13 @@ Never use image generation for exact numeric geometry.
 3. Choose `image`, `plot`, or `mixed` mode.
 4. For conceptual figures, use the closest template in `assets/prompt-templates/engineering-figure-templates.json` and adapt it to the user's scientific content.
 5. Route normal generation and editing through Codex's built-in image-generation capability. Prefer the built-in path over a custom API wrapper.
-6. For exact plots, render locally with Python/Matplotlib from the user's supplied numeric data.
+6. For exact plots, use `scripts/plot_publication_figure.py` with user-supplied numeric data.
 7. In `mixed` mode, keep quantitative panels local and exact; use image generation only for conceptual panels.
 8. Verify labels, hierarchy, reading order, values, axes, legend, and claim fidelity before finishing.
 
 ## Figure Brief
 
-When the request is under-specified, extract these fields before rendering:
+When the request is under-specified, extract:
 
 - `figure_goal`
 - `paper_claim`
@@ -42,6 +42,22 @@ When the request is under-specified, extract these fields before rendering:
 - `verification_checklist`
 
 See `references/figure-brief-spec.md`.
+
+## Local Commands
+
+Build a conceptual prompt without network calls:
+
+```bash
+python scripts/build_engineering_figure_prompt.py --figure-template system-architecture --lang zh "technical background"
+```
+
+Use the unified helper:
+
+```bash
+python scripts/efg.py prompt --figure-template mathematical-model-framework --lang zh "modeling background"
+python scripts/efg.py plot examples/benchmark-plot-request.json --out-path output/benchmark
+python scripts/efg.py check
+```
 
 ## Image Mode Rules
 
