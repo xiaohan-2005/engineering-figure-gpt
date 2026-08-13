@@ -1,0 +1,10 @@
+{
+  "kind": "bar",
+  "title": "Model Performance Comparison",
+  "xlabel": "Model",
+  "ylabel": "Score",
+  "data": {
+    "labels": ["Baseline A", "Baseline B", "Proposed"],
+    "values": [0.82, 0.86, 0.91]
+  }
+}
