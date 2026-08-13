@@ -12,8 +12,10 @@ Engineering Figure GPT separates conceptual composition from exact quantitative 
 
 ## 2. AI system architecture
 
+![System architecture](showcase/system-architecture.svg)
+
 **Mode:** `image`  
-**Suggested structure:** source data → preprocessing → representation → storage / memory → retrieval → reasoning → grounded output.
+**Suggested structure:** source data → preprocessing → core model → output layer.
 
 ## 3. Algorithm workflow
 
@@ -25,13 +27,17 @@ Engineering Figure GPT separates conceptual composition from exact quantitative 
 
 ## 4. Data-analysis pipeline
 
+![Data pipeline](showcase/data-pipeline.svg)
+
 **Mode:** `image` or `mixed`  
-**Suggested structure:** acquisition → cleaning → feature engineering → modeling → evaluation → interpretation.
+**Suggested structure:** acquisition → cleaning → modeling → evaluation → interpretation.
 
 ## 5. Multi-objective optimization workflow
 
+![Optimization workflow](showcase/optimization.svg)
+
 **Mode:** `image`  
-**Suggested structure:** objectives + constraints → initialization → search / solver → Pareto set → sensitivity analysis → final decision.
+**Suggested structure:** objectives + constraints → search / solver → Pareto set → final decision.
 
 ## 6. Benchmark plot
 
