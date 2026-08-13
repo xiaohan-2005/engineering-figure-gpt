@@ -1,0 +1,21 @@
+{
+  "layout": {"nrows": 1, "ncols": 2, "figsize": [9, 4]},
+  "panels": [
+    {
+      "kind": "bar",
+      "title": "Illustrative Scores",
+      "ylabel": "Score",
+      "annotate": true,
+      "data": {
+        "categories": ["A", "B", "C"],
+        "series": {"Method 1": [0.91, 0.89, 0.87], "Method 2": [0.84, 0.82, 0.80]}
+      }
+    },
+    {
+      "kind": "heatmap",
+      "title": "Illustrative Matrix",
+      "annotate": true,
+      "data": {"matrix": [[1.0, 0.4], [0.4, 1.0]], "x_labels": ["X1", "X2"], "y_labels": ["X1", "X2"]}
+    }
+  ]
+}
