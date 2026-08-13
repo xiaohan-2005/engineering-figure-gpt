@@ -1,53 +1,167 @@
 # Engineering Figure GPT
 
-A Codex-native skill for publication-oriented research figures.
+<div align="center">
 
+![License](https://img.shields.io/badge/license-MIT-2563eb)
 ![Codex Skill](https://img.shields.io/badge/Codex-skill-111827)
 ![Modes](https://img.shields.io/badge/modes-image%20%7C%20plot%20%7C%20mixed-2563eb)
+![Image](https://img.shields.io/badge/image-GPT--only-7c3aed)
 ![Focus](https://img.shields.io/badge/focus-research%20figures-16a34a)
+
+**GPT-native research-figure production for engineering, AI, data science, and mathematical modeling.**
+
+Conceptual figures use GPT image generation. Exact quantitative figures stay local and deterministic.
+
+[中文说明](README.zh-CN.md) · [English Guide](README.en.md) · [Showcase](docs/showcase.md) · [Install](INSTALL.md)
+
+</div>
 
 ## Preview
 
-| Mathematical modeling | Exact benchmark plot |
+| Modeling framework preview | Exact-plot layout preview |
 |---|---|
 | ![Modeling framework](docs/showcase/model-framework.svg) | ![Benchmark plot](docs/showcase/benchmark-plot.svg) |
 
-See the full [Showcase](docs/showcase.md).
+The conceptual SVGs currently committed to the repository are **layout previews**, not claims that a GPT run generated them. Real generated outputs should always be paired with their prompt/brief before being presented as reproducible showcase evidence.
+
+## Why this skill exists
+
+Research figures are not one prompt problem.
+
+| Figure need | Better path |
+|---|---|
+| Architecture, workflow, graphical abstract, modeling framework | `image` mode |
+| Benchmark bars, trends, heatmaps, scatter plots, uncertainty | `plot` mode |
+| Conceptual + quantitative panels | `mixed` mode |
+| Exact formulas or measured geometry | local rendering / later composition |
+
+Core rule: **numeric truth overrides aesthetics**. Exact values, axes, error bars, benchmark geometry, and long formulas should not be redrawn by an image model.
 
 ## Three modes
 
-- **Image mode:** architecture diagrams, workflows, graphical abstracts, modeling frameworks, redraws, and edits.
-- **Plot mode:** exact quantitative charts rendered locally from supplied values.
-- **Mixed mode:** exact local quantitative panels plus GPT-generated conceptual panels.
+### Image mode
 
-Core rule: exact values, axes, error bars, and benchmark geometry must remain exact and should not be redrawn by an image model.
+Use GPT image generation for conceptual composition, redraws, and image edits.
 
-## First-class scenarios
+Inside Codex, prefer the installed built-in image-generation path. For reproducibility or environments without that path, the repository includes an official OpenAI CLI fallback:
 
-Computer science, AI, engineering, electronics, data science, mathematical modeling, and Chinese/bilingual academic figures.
+```bash
+python scripts/generate_image.py "A publication-quality system architecture ..." --dry-run
+```
 
-## Included figure templates
+Remove `--dry-run` only after configuring an OpenAI API key. The fallback defaults to `gpt-image-2`, rejects custom base URLs, and does not silently switch to non-GPT providers.
+
+### Plot mode
+
+Natural language is the user interface; JSON is an internal execution format.
+
+Supported panel intents:
+
+- grouped bars, optional error bars and value annotations
+- trend curves with uncertainty shadows
+- heatmaps with exact matrices
+- single- or multi-series scatter plots
+- legend-only and empty layout panels
+- multi-panel layouts with width/height ratios
+
+Typical internal path:
+
+```bash
+python scripts/build_plot_spec.py examples/multi-panel-plot-request.json --out output/spec.json
+python scripts/plot_publication_figure.py output/spec.json --out-path output/figure --formats png pdf svg
+```
+
+### Mixed mode
+
+Render quantitative panels locally first. Generate only the conceptual panels. Never ask the image model to redraw exact plots.
+
+## Mathematical modeling is first-class
+
+The skill explicitly supports:
+
+- problem-analysis maps
+- Q1 / Q2 / Q3 dependency frameworks
+- data-preprocessing pipelines
+- forecasting workflows
+- optimization workflows
+- sensitivity / robustness analysis
+- evaluation frameworks
+- decision frameworks
+
+Chinese and bilingual academic labels are also treated as a first-class workflow rather than an afterthought.
+
+## Included conceptual templates
 
 `system-architecture` · `algorithm-workflow` · `graphical-abstract` · `mathematical-model-framework` · `data-analysis-pipeline` · `optimization-workflow` · `evaluation-framework` · `electronic-schematic`
 
-## Quick start
+## Install for Codex
 
-Install to Codex:
+Recommended development/source install:
 
 ```powershell
-git clone https://github.com/xiaohan-2005/engineering-figure-gpt.git "$HOME/.codex/skills/engineering-figure-gpt"
+git clone https://github.com/xiaohan-2005/engineering-figure-gpt.git "$HOME/engineering-figure-gpt"
+& "$HOME/engineering-figure-gpt/scripts/install_and_test.ps1"
 ```
 
-Build a figure prompt locally:
+The installer syncs a **pruned runtime package** to:
+
+```text
+~/.codex/skills/engineering-figure-gpt
+```
+
+Repository-only files such as docs, examples, tests, and CI configuration are not copied into the Codex runtime.
+
+Setup diagnostics:
+
+```powershell
+& "$HOME/.codex/skills/engineering-figure-gpt/scripts/check_setup.ps1"
+```
+
+## Unified CLI
 
 ```bash
-python scripts/efg.py prompt --figure-template mathematical-model-framework --lang en "Forecast demand, optimize allocation, validate robustness, and produce the final decision."
+python scripts/efg.py prompt --figure-template mathematical-model-framework --lang zh "technical background"
+python scripts/efg.py image "research figure prompt" --dry-run
+python scripts/efg.py build-plot examples/multi-panel-plot-request.json --out output/spec.json
+python scripts/efg.py plot output/spec.json --out-path output/figure --formats png pdf svg
+python scripts/efg.py check
 ```
 
-Render an exact quantitative example:
+## Validation
 
-```bash
-python scripts/efg.py plot examples/benchmark-plot-request.json --out-path output/benchmark
-```
+The CI pipeline checks more than unit tests:
 
-See [README.zh-CN.md](README.zh-CN.md) for the Chinese guide and [INSTALL.md](INSTALL.md) for installation details.
+- Python compilation
+- `SKILL.md` package structure
+- UTF-8 / common Chinese mojibake regressions
+- Chinese prompt-template integrity
+- prompt / CLI / plot tests
+- pruned runtime package token budget
+- offline CLI smoke checks
+
+## Repository map
+
+| Path | Purpose |
+|---|---|
+| `SKILL.md` | Codex skill routing and workflow |
+| `assets/prompt-templates/` | bilingual conceptual-figure templates |
+| `references/` | mode rules, Chinese labels, mathematical-modeling guidance |
+| `scripts/generate_image.py` | GPT-only official OpenAI CLI fallback |
+| `scripts/build_plot_spec.py` | concise request → normalized exact plot spec |
+| `scripts/plot_publication_figure.py` | multi-panel publication plot renderer |
+| `scripts/sync_codex_skill.py` | pruned runtime sync |
+| `scripts/check_setup.ps1` | Windows/Codex diagnostics |
+| `schemas/` | figure-brief and plot-request contracts |
+| `examples/` | reproducible inputs |
+| `tests/` | offline tests |
+
+## What it is not
+
+- not a full paper-writing system
+- not permission to fabricate missing numeric data
+- not a replacement for checking generated labels and scientific fidelity
+- not a single image prompt that treats diagrams and exact plots as the same problem
+
+## License
+
+MIT.
