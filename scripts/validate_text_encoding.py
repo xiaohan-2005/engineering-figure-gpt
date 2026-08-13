@@ -4,7 +4,14 @@ import sys
 from pathlib import Path
 
 TEXT_SUFFIXES = {".md", ".txt", ".json", ".py", ".ps1", ".yml", ".yaml"}
-SUSPICIOUS = ["鍒涘缓", "鎶€鏈", "鐧借壊", "绯荤粺", "鏁版嵁", "缁撴瀯"]
+SUSPICIOUS = [
+    "\u9352\u6d98\u7f13",
+    "\u93b6\u20ac\u93c8",
+    "\u9427\u501f\u58ca",
+    "\u7eef\u8364\u7cba",
+    "\u93c1\u7248\u5d41",
+    "\u7f01\u64b4\u702f",
+]
 
 
 def iter_files(paths: list[str]):
