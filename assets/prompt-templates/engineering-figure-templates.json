@@ -1,0 +1,18 @@
+{
+  "system-architecture": {
+    "en": "Create a publication-quality system architecture figure. Show module hierarchy, interfaces, data flow, and functional blocks. Use a white background, disciplined spacing, concise labels, clean arrows, and a restrained journal-style palette. Do not invent unsupported components or numbers. Technical Background:\n{background}",
+    "zh": "创建论文级系统架构图。清楚展示模块层级、接口关系、数据流和功能模块。使用白底、规整间距、简短标签、清晰箭头和克制配色。不要添加没有依据的模块或数字。技术背景：\n{background}"
+  },
+  "algorithm-workflow": {
+    "en": "Create a publication-quality algorithm workflow figure with clear stages, decisions, loops, and outputs. Distinguish training and inference when relevant. Use a white background, concise labels, and explicit reading order. Technical Background:\n{background}",
+    "zh": "创建论文级算法流程图，用清晰阶段、决策节点、循环和输出展示方法逻辑；需要时区分训练与推理。使用白底、简洁标签和明确阅读顺序。技术背景：\n{background}"
+  },
+  "graphical-abstract": {
+    "en": "Create a publication-quality graphical abstract that summarizes the central input, method, mechanism, output, and application impact in one coherent visual. Use a white background and strong visual hierarchy. Technical Background:\n{background}",
+    "zh": "创建论文级 graphical abstract，在一张图中概括核心输入、方法、机制、输出和应用价值。使用白底并保持明确视觉层级。技术背景：\n{background}"
+  },
+  "mathematical-model-framework": {
+    "en": "Create a publication-quality mathematical-modeling framework figure. Show the chain from problem and data through assumptions, preprocessing, model construction, solution, validation, sensitivity analysis, and final output. Preserve supplied symbols and model names. Do not invent formulas or values. Modeling Background:\n{background}",
+    "zh": "创建高质量数学建模总体框架图。展示从问题与数据，到假设、预处理、模型构建、求解、检验、敏感性分析和最终输出的完整链条。保留用户提供的符号和模型名称，不得虚构公式或数值。建模背景：\n{background}"
+  }
+}
