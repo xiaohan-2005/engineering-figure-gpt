@@ -14,5 +14,21 @@
   "mathematical-model-framework": {
     "en": "Create a publication-quality mathematical-modeling framework figure. Show the chain from problem and data through assumptions, preprocessing, model construction, solution, validation, sensitivity analysis, and final output. Preserve supplied symbols and model names. Do not invent formulas or values. Modeling Background:\n{background}",
     "zh": "创建高质量数学建模总体框架图。展示从问题与数据，到假设、预处理、模型构建、求解、检验、敏感性分析和最终输出的完整链条。保留用户提供的符号和模型名称，不得虚构公式或数值。建模背景：\n{background}"
+  },
+  "data-analysis-pipeline": {
+    "en": "Create a publication-quality data-analysis pipeline figure. Show data sources, preprocessing, feature construction, analysis/modeling, evaluation, interpretation, and output. Distinguish raw data, transformed data, model stages, and reported results. Technical Background:\n{background}",
+    "zh": "创建论文级数据分析流程图。展示数据来源、预处理、特征构建、分析或建模、评价、解释和结果输出，并明确区分原始数据、处理后数据、模型阶段和最终结果。技术背景：\n{background}"
+  },
+  "optimization-workflow": {
+    "en": "Create a publication-quality optimization workflow figure. Show objective construction, decision variables, constraints, initialization, solution strategy, iterative update, stopping condition, feasibility check, and final solution where relevant. Technical Background:\n{background}",
+    "zh": "创建论文级优化求解流程图。根据背景展示目标构建、决策变量、约束、初始化、求解策略、迭代更新、停止条件、可行性检查和最终解。技术背景：\n{background}"
+  },
+  "evaluation-framework": {
+    "en": "Create a publication-quality evaluation framework figure. Show datasets or scenarios, compared methods, metrics, validation strategy, robustness checks, and the logic used to compare results. Do not invent metric values. Technical Background:\n{background}",
+    "zh": "创建论文级评价框架图。展示数据集或场景、对比方法、评价指标、验证策略、稳健性检查和结果比较逻辑，不得虚构指标数值。技术背景：\n{background}"
+  },
+  "electronic-schematic": {
+    "en": "Create a clean publication-style electronics or embedded-system block schematic. Show major components, signal flow, interfaces, sensors, controllers, buses, memory, and outputs only when supported by the background. Keep the figure schematic rather than photorealistic. Technical Background:\n{background}",
+    "zh": "创建论文风格电子系统或嵌入式系统框图。根据背景展示主要组件、信号流、接口、传感器、控制单元、总线、存储和输出。保持示意图风格，不做写实渲染。技术背景：\n{background}"
   }
 }
