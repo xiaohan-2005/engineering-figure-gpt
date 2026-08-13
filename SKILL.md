@@ -1,91 +1,121 @@
 ---
 name: engineering-figure-gpt
-description: Use when the user needs publication-style engineering, computer-science, data-science, AI, electronics, or mathematical-modeling figures. Prefer this skill for system architectures, algorithm workflows, graphical abstracts, model-framework diagrams, benchmark charts, ablation plots, trend/scatter/heatmap panels, figure redraws, and image edits. Use Codex built-in GPT image generation for conceptual figures and local plotting for exact quantitative figures.
+description: Use when the user needs publication-style engineering, computer-science, data-science, AI, electronics, or mathematical-modeling figures. Prefer this skill for system architectures, algorithm workflows, graphical abstracts, model-framework diagrams, benchmark charts, ablation plots, trend/scatter/heatmap panels, figure redraws, and image edits. Use Codex built-in GPT image generation for conceptual figures when available, an official OpenAI GPT Image 2 CLI fallback for reproducibility, and local plotting for exact quantitative figures.
 ---
 
 # Engineering Figure GPT
 
 Use this skill for research-figure production once the figure goal is reasonably clear.
 
-## Modes
+## Boundary
 
-- `image`: conceptual figures, architecture diagrams, algorithm workflows, graphical abstracts, mathematical-model frameworks, mechanism diagrams, and reference-inspired redraws.
-- `plot`: exact charts where numeric values, axes, error bars, or benchmark geometry must be faithful.
-- `mixed`: render quantitative panels locally first, then generate only the conceptual panels.
+Good fit:
 
-Never use image generation for exact numeric geometry.
+- turn a figure brief into a conceptual diagram, workflow, modeling framework, schematic, or exact plot
+- choose `image`, `plot`, or `mixed` mode
+- turn natural-language plot requests into internal specs
+- generate/edit conceptual figures through GPT image generation
+- render exact quantitative panels locally
 
-## Workflow
+Not the main tool for deciding from scratch what scientific claim a paper should make. If the figure claim, panel logic, or caption argument is still unclear, resolve that upstream first.
 
-1. Inspect the paper text, figure brief, data, or requested figure.
+## Core Decision
+
+- `image`: conceptual architecture, workflow, graphical abstract, modeling framework, mechanism diagram, redraw, image edit
+- `plot`: exact bar, trend, heatmap, scatter, ablation, benchmark, and multi-panel quantitative figures
+- `mixed`: local exact quantitative panels plus GPT-generated conceptual panels
+
+Never use image generation for exact numeric geometry, axes, uncertainty bars, benchmark values, or formulas that must remain exact.
+
+## Default Workflow
+
+1. Inspect the user's paper text, figure brief, numeric data, reference image, or request.
 2. If needed, structure the request with `references/figure-brief-spec.md`.
-3. Choose `image`, `plot`, or `mixed` mode.
-4. For conceptual figures, use the closest template in `assets/prompt-templates/engineering-figure-templates.json` and adapt it to the user's scientific content.
-5. Route normal generation and editing through Codex's built-in image-generation capability. Prefer the built-in path over a custom API wrapper.
-6. For exact plots, use `scripts/plot_publication_figure.py` with user-supplied numeric data.
-7. In `mixed` mode, keep quantitative panels local and exact; use image generation only for conceptual panels.
-8. Verify labels, hierarchy, reading order, values, axes, legend, and claim fidelity before finishing.
+3. Choose `image`, `plot`, or `mixed`.
+4. For conceptual figures, choose the closest template in `assets/prompt-templates/engineering-figure-templates.json` and adapt it to the scientific content.
+5. Inside Codex, prefer the installed built-in image-generation capability for normal conceptual generation/editing.
+6. When a portable or reproducible CLI path is requested, use `scripts/generate_image.py`, which is intentionally restricted to the official OpenAI endpoint and defaults to `gpt-image-2`.
+7. For exact plots, treat natural language as the user interface and JSON as an internal format. Follow `references/natural-language-plot-workflow.md`.
+8. Normalize concise plot requests with `scripts/build_plot_spec.py`, then render with `scripts/plot_publication_figure.py`.
+9. In mixed mode, render quantitative panels first and never ask the image model to redraw them.
+10. Verify labels, units, reading order, legends, values, axes, uncertainty, and scientific fidelity before finishing.
 
-## Figure Brief
+## Image Mode
 
-When the request is under-specified, extract:
+Use GPT image generation when conceptual composition matters more than numeric geometry.
 
-- `figure_goal`
-- `paper_claim`
-- `figure_type`
-- `mode`
-- `panels`
-- `must_keep_labels`
-- `data`
-- `style_constraints`
-- `output_formats`
-- `verification_checklist`
+Rules:
 
-See `references/figure-brief-spec.md`.
+- preserve user-supplied terminology, module relationships, mathematical notation, and standard abbreviations
+- prefer white backgrounds, short labels, clear arrows, disciplined spacing, and explicit reading order
+- do not invent measurements, formulas, benchmark values, causal claims, model components, or hardware specifications
+- for Chinese figures, keep labels concise and preserve established English abbreviations when they improve readability
+- for final paper use, inspect generated text carefully; regenerate or edit if labels are malformed
 
-## Local Commands
-
-Build a conceptual prompt without network calls:
+Portable fallback:
 
 ```bash
-python scripts/build_engineering_figure_prompt.py --figure-template system-architecture --lang zh "technical background"
+python scripts/generate_image.py "publication-quality architecture figure ..." --quality high --size 1536x1024
 ```
 
-Use the unified helper:
+Edit an existing image:
 
 ```bash
-python scripts/efg.py prompt --figure-template mathematical-model-framework --lang zh "modeling background"
-python scripts/efg.py plot examples/benchmark-plot-request.json --out-path output/benchmark
+python scripts/generate_image.py "keep structure, improve hierarchy and labels" --input-image input.png --input-fidelity high
+```
+
+The CLI fallback requires an OpenAI API key. Do not commit keys to the repository.
+
+## Plot Mode
+
+Numeric truth overrides aesthetics.
+
+Supported panel intents:
+
+- grouped bars with optional error bars and annotations
+- trend curves with optional uncertainty shadows
+- heatmaps with exact matrices and colorbars
+- scatter plots with one or multiple labeled series
+- dedicated legend-only panels
+- empty panels for deliberate multi-panel layout
+
+Natural-language request path:
+
+```bash
+python scripts/build_plot_spec.py request.json --out spec.json
+python scripts/plot_publication_figure.py spec.json --out-path output/figure --formats png pdf svg
+```
+
+Use vector export when helpful. Never alter supplied values to make a figure look better.
+
+## Unified CLI
+
+```bash
+python scripts/efg.py prompt --figure-template mathematical-model-framework --lang zh "technical background"
+python scripts/efg.py image "research figure prompt" --dry-run
+python scripts/efg.py build-plot request.json --out spec.json
+python scripts/efg.py plot spec.json --out-path output/figure --formats png pdf svg
 python scripts/efg.py check
 ```
 
-## Image Mode Rules
+## Reference Loading
 
-- Use GPT image generation for conceptual composition, redraws, and edits.
-- Preserve scientific terminology and module relationships supplied by the user.
-- Prefer white backgrounds, short labels, clear arrows, explicit reading order, and restrained publication styling.
-- For final figures, favor high quality and a landscape aspect ratio unless the paper layout or user request implies otherwise.
-- Do not introduce unsupported formulas, measurements, causal claims, model components, or benchmark values.
-- If the user explicitly asks for a CLI/API/model-specific path, follow the installed system image-generation skill's fallback rules instead of inventing a new wrapper.
+Read only what the task needs:
 
-## Plot Mode Rules
-
-- Numeric truth overrides aesthetics.
-- Use local plotting for exact values, scales, error bars, confidence intervals, and benchmark geometry.
-- Never change supplied numbers to improve the visual.
-- Prefer vector export when useful and high-resolution raster output for paper insertion.
-- Keep axis labels, units, legends, and uncertainty notation faithful to the source data.
-
-## Mixed Mode Rules
-
-- Render quantitative panels first.
-- Do not ask the image model to redraw exact plots.
-- Generate only the conceptual panels, then keep the visual language compatible across panels.
-- Re-check that panel labels and cross-panel references still match after composition.
+- `references/figure-brief-spec.md`
+- `references/publication-figure-design.md`
+- `references/natural-language-plot-workflow.md`
+- `references/image-mode.md`
+- `references/plot-mode.md`
+- `references/mixed-mode.md`
+- `references/mathematical-modeling.md`
+- `references/gpt-image-2-guidance.md`
 
 ## Quality Rules
 
-- Do not fabricate measurements, benchmark values, hardware specs, model components, formulas, or unsupported causal claims.
-- Preserve user-supplied terminology when scientifically meaningful.
-- Favor white backgrounds, clear arrows, restrained spacing, concise labels, and publication readability.
-- For Chinese figures, preserve standard mathematical notation and established technical abbreviations where useful.
+- do not fabricate scientific facts or numeric results
+- keep exact plots local and deterministic
+- keep formulas and mathematical symbols source-faithful
+- inspect Chinese labels for encoding, font fallback, clipping, and excessive length
+- prefer concise visual hierarchy over decorative complexity
+- save prompts/specs/output paths when files are produced so the result is reproducible
