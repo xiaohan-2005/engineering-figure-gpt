@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import mimetypes
 import os
 from pathlib import Path
 
@@ -43,6 +44,13 @@ def read_prompt(args: argparse.Namespace) -> str:
     raise SystemExit("Provide a prompt or --prompt-file.")
 
 
+def validate_target(args: argparse.Namespace) -> None:
+    if args.base_url.rstrip("/") != DEFAULT_BASE_URL:
+        raise SystemExit("Custom base URLs are intentionally rejected; this skill uses the official OpenAI endpoint only.")
+    if not args.model.startswith("gpt-image-"):
+        raise SystemExit("Only GPT Image models are allowed by this GPT-only skill.")
+
+
 def save_result(payload: dict, out_dir: Path, prefix: str, output_format: str) -> list[Path]:
     data = payload.get("data") or []
     if not data:
@@ -65,17 +73,9 @@ def save_result(payload: dict, out_dir: Path, prefix: str, output_format: str) -
 
 
 def generation_request(args: argparse.Namespace, prompt: str, headers: dict) -> dict:
-    body = {
-        "model": args.model,
-        "prompt": prompt,
-        "size": args.size,
-        "quality": args.quality,
-        "output_format": args.output_format,
-    }
+    body = {"model": args.model, "prompt": prompt, "size": args.size, "quality": args.quality, "output_format": args.output_format, "n": args.n}
     if args.background:
         body["background"] = args.background
-    if args.n:
-        body["n"] = args.n
     response = requests.post(f"{args.base_url.rstrip('/')}/images/generations", headers={**headers, "Content-Type": "application/json"}, json=body, timeout=args.timeout)
     if not response.ok:
         raise SystemExit(f"OpenAI image generation failed ({response.status_code}): {response.text}")
@@ -92,14 +92,9 @@ def edit_request(args: argparse.Namespace, prompt: str, headers: dict) -> dict:
                 raise SystemExit(f"Input image not found: {path}")
             handle = path.open("rb")
             handles.append(handle)
-            files.append(("image[]", (path.name, handle, "application/octet-stream")))
-        data = {
-            "model": args.model,
-            "prompt": prompt,
-            "size": args.size,
-            "quality": args.quality,
-            "output_format": args.output_format,
-        }
+            mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            files.append(("image[]", (path.name, handle, mime)))
+        data = {"model": args.model, "prompt": prompt, "size": args.size, "quality": args.quality, "output_format": args.output_format, "n": str(args.n)}
         if args.background:
             data["background"] = args.background
         if args.input_fidelity:
@@ -126,7 +121,7 @@ def main() -> int:
     parser.add_argument("--size", default=os.getenv("OPENAI_IMAGE_SIZE", "1536x1024"))
     parser.add_argument("--output-format", choices=("png", "jpeg", "webp"), default=os.getenv("OPENAI_IMAGE_OUTPUT_FORMAT", "png"))
     parser.add_argument("--background", choices=("transparent", "opaque", "auto"))
-    parser.add_argument("--input-fidelity", choices=("low", "high"), default="high")
+    parser.add_argument("--input-fidelity", choices=("low", "high"), default=None, help="Send only when the selected GPT Image endpoint supports/needs an explicit fidelity setting.")
     parser.add_argument("--n", type=int, default=1)
     parser.add_argument("--out-dir", default="output/image")
     parser.add_argument("--prefix", default="engineering-figure-gpt")
@@ -135,8 +130,7 @@ def main() -> int:
     args = parser.parse_args()
 
     prompt = read_prompt(args)
-    if args.base_url.rstrip("/") != DEFAULT_BASE_URL:
-        raise SystemExit("This GPT-only skill defaults to the official OpenAI endpoint. Custom base URLs are intentionally rejected.")
+    validate_target(args)
     if args.dry_run:
         print(json.dumps({"mode": "edit" if args.input_image else "generate", "model": args.model, "size": args.size, "quality": args.quality, "output_format": args.output_format, "prompt_chars": len(prompt)}, ensure_ascii=False))
         return 0
