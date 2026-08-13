@@ -10,29 +10,28 @@ Engineering Figure GPT separates conceptual composition from exact quantitative 
 **Goal:** summarize a modeling paper from problem definition through validation and decision output.  
 **Reproducible brief:** `examples/mathematical-model-framework.md`
 
-## 2. RAG / AI system architecture
+## 2. AI system architecture
 
 **Mode:** `image`  
-**Suggested structure:** Documents → OCR / chunking → embeddings → vector store → retrieval → reranking → grounded answer.  
-**Reproducible brief:** `examples/rag-system-architecture.md`
+**Suggested structure:** source data → preprocessing → representation → storage / memory → retrieval → reasoning → grounded output.
 
 ## 3. Algorithm workflow
 
+![Algorithm workflow](showcase/algorithm-workflow.svg)
+
 **Mode:** `image`  
-**Suggested structure:** Input → preprocessing → feature extraction → model inference / optimization → decision → output, with explicit loops and stop conditions when needed.  
+**Suggested structure:** input → preprocessing → inference / optimization → validation → output, with explicit loops and stop conditions when needed.  
 **Reproducible brief:** `examples/algorithm-workflow.md`
 
 ## 4. Data-analysis pipeline
 
 **Mode:** `image` or `mixed`  
-**Suggested structure:** acquisition → cleaning → feature engineering → modeling → evaluation → interpretation.  
-**Reproducible brief:** `examples/data-analysis-pipeline.md`
+**Suggested structure:** acquisition → cleaning → feature engineering → modeling → evaluation → interpretation.
 
 ## 5. Multi-objective optimization workflow
 
 **Mode:** `image`  
-**Suggested structure:** objectives + constraints → initialization → search / solver → Pareto set → sensitivity analysis → final decision.  
-**Reproducible brief:** `examples/multi-objective-optimization.md`
+**Suggested structure:** objectives + constraints → initialization → search / solver → Pareto set → sensitivity analysis → final decision.
 
 ## 6. Benchmark plot
 
@@ -44,4 +43,4 @@ Engineering Figure GPT separates conceptual composition from exact quantitative 
 
 ---
 
-Conceptual SVGs in this gallery are **layout previews**, not claims that a particular GPT image run produced them. When the skill is used in Codex, conceptual panels should be generated through the installed GPT image-generation path, while quantitative panels remain exact local plots.
+The conceptual SVGs in this gallery are **layout previews**, not claims that a particular GPT image run produced them. In Codex, conceptual panels should be generated through the installed GPT image-generation path, while quantitative panels remain exact local plots.
