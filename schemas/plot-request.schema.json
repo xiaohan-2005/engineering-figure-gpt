@@ -1,20 +1,33 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Engineering Figure GPT Plot Request",
   "type": "object",
-  "required": ["kind", "data"],
+  "required": ["panels"],
   "properties": {
-    "kind": {"enum": ["bar", "line", "scatter"]},
-    "title": {"type": "string"},
-    "xlabel": {"type": "string"},
-    "ylabel": {"type": "string"},
-    "figsize": {
+    "suptitle": {"type": "string"},
+    "style": {"type": "object"},
+    "layout": {"type": "object"},
+    "panels": {
       "type": "array",
-      "minItems": 2,
-      "maxItems": 2,
-      "items": {"type": "number"}
-    },
-    "data": {"type": "object"}
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": {"enum": ["bar", "trend", "heatmap", "scatter", "legend", "empty"]},
+          "title": {"type": "string"},
+          "xlabel": {"type": "string"},
+          "ylabel": {"type": "string"},
+          "data": {"type": "object"},
+          "colors": {"type": "object"},
+          "source_panel": {"type": "integer", "minimum": 0},
+          "annotate": {"type": "boolean"},
+          "legend": {"type": "boolean"},
+          "legend_outside": {"type": "boolean"},
+          "grid": {"type": "boolean"}
+        },
+        "additionalProperties": true
+      }
+    }
   },
   "additionalProperties": true
 }
