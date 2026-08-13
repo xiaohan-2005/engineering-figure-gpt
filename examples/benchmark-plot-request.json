@@ -1,10 +1,22 @@
 {
-  "kind": "bar",
-  "title": "Model Performance Comparison",
-  "xlabel": "Model",
-  "ylabel": "Score",
-  "data": {
-    "labels": ["Baseline A", "Baseline B", "Proposed"],
-    "values": [0.82, 0.86, 0.91]
-  }
+  "layout": {
+    "nrows": 1,
+    "ncols": 1,
+    "figsize": [7, 4.5]
+  },
+  "panels": [
+    {
+      "kind": "bar",
+      "title": "Illustrative Benchmark",
+      "ylabel": "Score",
+      "annotate": true,
+      "data": {
+        "categories": ["Metric A", "Metric B", "Metric C"],
+        "series": {
+          "Method A": [0.91, 0.89, 0.87],
+          "Method B": [0.84, 0.82, 0.80]
+        }
+      }
+    }
+  ]
 }
