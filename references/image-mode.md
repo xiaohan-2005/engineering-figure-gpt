@@ -12,13 +12,29 @@ Recommended targets:
 - reference-inspired redraw
 - image edit
 
-Default approach:
+## Preferred execution path
 
-1. Extract the scientific entities, relationships, and reading order.
+Inside Codex, use the installed built-in image-generation capability for normal generation and editing. This keeps the skill agent-native and avoids unnecessary provider wrappers.
+
+## Portable fallback
+
+For reproducibility, local testing, or environments without the built-in image tool, use:
+
+```bash
+python scripts/generate_image.py "figure prompt" --dry-run
+```
+
+The fallback is GPT-only, defaults to `gpt-image-2`, and rejects custom base URLs. Remove `--dry-run` only after configuring an OpenAI API key and intentionally choosing to spend image API credits.
+
+## Workflow
+
+1. Extract scientific entities, relationships, labels, and reading order.
 2. Select the closest prompt template.
-3. Keep only source-grounded labels and claims.
-4. Use Codex built-in GPT image generation for normal generation or editing.
-5. Inspect the result for label errors, arrow direction, module hierarchy, and accidental invented content.
-6. Regenerate or edit when scientific fidelity is not adequate.
+3. Preserve source-grounded terminology and relationships.
+4. Generate or edit through the preferred GPT image path.
+5. Inspect labels, arrows, hierarchy, symbols, and accidental invented content.
+6. Regenerate or edit when scientific fidelity is inadequate.
 
-Prefer a white background, concise labels, clean arrows, restrained styling, and high readability at paper width.
+Prefer white backgrounds, concise labels, clean arrows, restrained styling, and readability at paper width.
+
+Do not ask image generation to reproduce exact benchmark geometry, long formulas, exact measured values, axes, or error bars.
