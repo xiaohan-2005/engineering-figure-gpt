@@ -1,26 +1,52 @@
 # Install in Codex
 
-## Windows PowerShell
+## Recommended Windows PowerShell path
 
-Clone the repository into the Codex skills directory:
+Keep the GitHub repository as a source checkout, then install a pruned runtime copy into Codex.
 
 ```powershell
-git clone https://github.com/xiaohan-2005/engineering-figure-gpt.git "$HOME/.codex/skills/engineering-figure-gpt"
+git clone https://github.com/xiaohan-2005/engineering-figure-gpt.git "$HOME/engineering-figure-gpt"
+& "$HOME/engineering-figure-gpt/scripts/install_and_test.ps1"
 ```
 
-Then open a new Codex session or restart Codex.
+The runtime skill is synchronized to:
 
-To verify that Codex can see the skill:
-
-```powershell
-Get-ChildItem "$HOME/.codex/skills/engineering-figure-gpt" -Filter "SKILL.md"
+```text
+~/.codex/skills/engineering-figure-gpt
 ```
 
-To update later:
+The runtime is intentionally smaller than the GitHub repository. Repository-only items such as `docs/`, `examples/`, `tests/`, `.github/`, and README files stay out of the Codex runtime context.
+
+## Setup check
 
 ```powershell
-Set-Location "$HOME/.codex/skills/engineering-figure-gpt"
+& "$HOME/.codex/skills/engineering-figure-gpt/scripts/check_setup.ps1"
+```
+
+The check verifies Python, required runtime files, the Codex built-in image-generation skill when present, the offline CLI path, and optional OpenAI API-key availability for the portable image fallback.
+
+## Image generation
+
+Normal in-agent use should prefer Codex's built-in image-generation capability.
+
+The portable CLI fallback requires an OpenAI API key. You can set `OPENAI_API_KEY` in the environment or store a key in:
+
+```text
+~/.codex/secrets/openai_api_key.txt
+```
+
+Do not commit real keys to this repository.
+
+## Updating
+
+Update the source checkout and rerun the installer:
+
+```powershell
+Set-Location "$HOME/engineering-figure-gpt"
 git pull
+& .\scripts\install_and_test.ps1 -SkipDependencies
 ```
 
-This skill is Codex-native: normal conceptual-image generation should use Codex's built-in GPT image-generation capability, so the default workflow does not require a separate image-provider wrapper in this repository.
+## Direct clone into the skills directory
+
+A direct clone into `~/.codex/skills/engineering-figure-gpt` can work for development, but it also places docs, examples, tests, and CI files inside the runtime directory. The pruned installer path above is preferred.
