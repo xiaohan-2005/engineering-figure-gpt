@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Engineering Figure GPT Plot Request",
+  "type": "object",
+  "required": ["kind", "data"],
+  "properties": {
+    "kind": {"enum": ["bar", "line", "scatter"]},
+    "title": {"type": "string"},
+    "xlabel": {"type": "string"},
+    "ylabel": {"type": "string"},
+    "figsize": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {"type": "number"}
+    },
+    "data": {"type": "object"}
+  },
+  "additionalProperties": true
+}
