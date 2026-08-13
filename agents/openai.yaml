@@ -1,0 +1,7 @@
+interface:
+  display_name: "Engineering Figure GPT"
+  short_description: "OpenAI-first research figures and exact plots."
+  default_prompt: "Use $engineering-figure-gpt to create a publication-oriented research figure, choose image/plot/mixed mode, preserve numeric truth, and render the appropriate output."
+
+policy:
+  allow_implicit_invocation: true
