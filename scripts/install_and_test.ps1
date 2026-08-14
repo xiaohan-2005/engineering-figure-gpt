@@ -70,12 +70,21 @@ finally {
 
 # Live image generation is opt-in because it performs a paid network request.
 if ($TestLiveImage) {
-    Push-Location $target
-    & python scripts/generate_image.py "Minimal publication-style scientific workflow diagram with three labeled modules on a white background." --quality low --size 1024x1024 --out-dir (Join-Path $tempDir "live-image")
-    $imageExit = $LASTEXITCODE
-    Pop-Location
-    if ($imageExit -ne 0) { throw "Live GPT image test failed with exit code $imageExit." }
-    Write-Host "[PASS] Optional live GPT image test completed" -ForegroundColor Green
+    $liveTemp = Join-Path ([System.IO.Path]::GetTempPath()) ("engineering-figure-gpt-live-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $liveTemp | Out-Null
+    try {
+        Push-Location $target
+        & python scripts/generate_image.py "Minimal publication-style scientific workflow diagram with three labeled modules on a white background." --quality low --size 1024x1024 --out-dir $liveTemp
+        $imageExit = $LASTEXITCODE
+        Pop-Location
+        if ($imageExit -ne 0) { throw "Live GPT image test failed with exit code $imageExit." }
+        $generated = Get-ChildItem $liveTemp -File | Where-Object { $_.Length -gt 0 }
+        if (-not $generated) { throw "Live GPT image test returned no non-empty output file." }
+        Write-Host "[PASS] Optional live GPT image test produced a non-empty output" -ForegroundColor Green
+    }
+    finally {
+        if (Test-Path $liveTemp) { Remove-Item -Recurse -Force $liveTemp }
+    }
 }
 
 Write-Host "Engineering Figure GPT install-and-test completed successfully." -ForegroundColor Green
