@@ -18,6 +18,7 @@ def test_reference_index_points_to_existing_files():
         "chinese-labels.md",
         "gpt-image-2-guidance.md",
         "openai-image-workflow.md",
+        "codex-cc-switch.md",
         "image-execution-reliability.md",
         "highres-policy.md",
         "editable-figure-handoff.md",
