@@ -25,6 +25,18 @@ import requests
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-image-2"
 OFFICIAL_HOST = "api.openai.com"
+FINAL_HINTS = (
+    "2k",
+    "highres",
+    "high-res",
+    "high resolution",
+    "final export",
+    "final-export",
+    "final quality",
+    "最终导出",
+    "最终质量",
+    "高分辨率",
+)
 
 
 def env_flag(name: str) -> bool:
@@ -75,6 +87,30 @@ def normalized_base_url(value: str) -> str:
 def is_official_base_url(base_url: str) -> bool:
     parsed = urlparse(base_url)
     return parsed.scheme == "https" and (parsed.hostname or "").lower() == OFFICIAL_HOST
+
+
+def final_quality_requested(args: argparse.Namespace, prompt: str = "") -> bool:
+    if bool(getattr(args, "highres", False)) or bool(getattr(args, "final", False)):
+        return True
+    lowered = (prompt or "").lower()
+    return any(hint in lowered for hint in FINAL_HINTS)
+
+
+def resolve_model(args: argparse.Namespace, prompt: str = "") -> tuple[str, bool]:
+    final_requested = final_quality_requested(args, prompt)
+    explicit_model = getattr(args, "model", None)
+    if explicit_model:
+        return str(explicit_model), final_requested
+    if final_requested:
+        highres_model = os.getenv("OPENAI_IMAGE_HIGHRES_MODEL", "").strip()
+        if not highres_model:
+            raise SystemExit(
+                "Final/high-resolution output was requested, but OPENAI_IMAGE_HIGHRES_MODEL is not configured. "
+                "Set it to the final-quality model exposed by your official endpoint or trusted relay, or pass --model explicitly. "
+                "The skill will not silently downgrade a final-quality request."
+            )
+        return highres_model, True
+    return os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL, False
 
 
 def validate_target(args: argparse.Namespace) -> bool:
@@ -228,12 +264,74 @@ def edit_request(args: argparse.Namespace, prompt: str, headers: dict) -> dict:
             handle.close()
 
 
+def endpoint_probe(url: str, headers: dict, timeout: int) -> dict:
+    try:
+        response = requests.options(url, headers=headers, timeout=timeout)
+    except requests.Timeout:
+        return {"status": "timeout", "http_status": None}
+    except requests.RequestException as exc:
+        return {"status": "network-error", "http_status": None, "detail": str(exc)[:300]}
+    code = int(response.status_code)
+    if code == 404:
+        status = "missing"
+    elif code in {401, 403}:
+        status = "auth-required"
+    elif code == 405:
+        status = "route-present-options-unsupported"
+    elif 200 <= code < 500:
+        status = "reachable"
+    else:
+        status = "server-error"
+    return {"status": status, "http_status": code}
+
+
+def provider_check(args: argparse.Namespace, third_party: bool) -> int:
+    key = read_key(args)
+    headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+    base = args.base_url.rstrip("/")
+    result = {
+        "profile": "openai-compatible-relay" if third_party else "official-openai",
+        "base_url": base,
+        "model": args.model,
+        "models_endpoint": {"status": "not-checked", "http_status": None, "model_advertised": None},
+        "generation_endpoint": endpoint_probe(f"{base}/images/generations", headers, args.timeout),
+        "edit_endpoint": endpoint_probe(f"{base}/images/edits", headers, args.timeout),
+    }
+    try:
+        response = requests.get(f"{base}/models", headers=headers, timeout=args.timeout)
+        model_info = {"http_status": int(response.status_code)}
+        if response.ok:
+            try:
+                payload = response.json()
+                items = payload.get("data", []) if isinstance(payload, dict) else []
+                ids = {str(item.get("id")) for item in items if isinstance(item, dict) and item.get("id")}
+                model_info.update({"status": "reachable", "model_advertised": args.model in ids if ids else None})
+            except ValueError:
+                model_info.update({"status": "reachable-non-json", "model_advertised": None})
+        elif response.status_code == 404:
+            model_info.update({"status": "missing", "model_advertised": None})
+        else:
+            model_info.update({"status": "http-error", "model_advertised": None})
+        result["models_endpoint"] = model_info
+    except requests.Timeout:
+        result["models_endpoint"] = {"status": "timeout", "http_status": None, "model_advertised": None}
+    except requests.RequestException as exc:
+        result["models_endpoint"] = {"status": "network-error", "http_status": None, "model_advertised": None, "detail": str(exc)[:300]}
+
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    generation_status = result["generation_endpoint"]["status"]
+    if generation_status in {"missing", "network-error", "timeout", "server-error"}:
+        print("Provider check did not confirm a usable /images/generations route.", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate or edit research figures with a GPT Image-compatible API.")
     parser.add_argument("prompt", nargs="?")
     parser.add_argument("--prompt-file")
     parser.add_argument("--input-image", action="append", default=[], help="Input image for editing; may be repeated.")
-    parser.add_argument("--model", default=os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_MODEL))
+    parser.add_argument("--model", default=None, help="Explicit GPT Image model override.")
     parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL), help="Official OpenAI or explicitly approved OpenAI-compatible relay base URL, usually ending in /v1.")
     parser.add_argument("--allow-third-party", action="store_true", default=env_flag("OPENAI_ALLOW_THIRD_PARTY"), help="Allow a non-OpenAI relay/base URL. Only enable for an endpoint you trust.")
     parser.add_argument("--api-key")
@@ -247,13 +345,21 @@ def main() -> int:
     parser.add_argument("--out-dir", default="output/image")
     parser.add_argument("--prefix", default="engineering-figure-gpt")
     parser.add_argument("--timeout", type=int, default=240)
+    parser.add_argument("--highres", action="store_true", help="Use OPENAI_IMAGE_HIGHRES_MODEL and fail closed when it is not configured.")
+    parser.add_argument("--final", action="store_true", help="Alias for final-quality/high-resolution routing.")
+    parser.add_argument("--check-provider", action="store_true", help="Probe relay/API compatibility without generating an image. Requires API authentication but does not call image generation.")
     parser.add_argument("--dry-run", action="store_true", help="Validate arguments without calling the API.")
     args = parser.parse_args()
 
-    prompt = read_prompt(args)
+    prompt = "" if args.check_provider else read_prompt(args)
+    args.model, final_requested = resolve_model(args, prompt)
     third_party = validate_target(args)
     if third_party:
         print(f"[WARN] Using explicitly approved third-party relay: {args.base_url}", file=sys.stderr)
+
+    if args.check_provider:
+        return provider_check(args, third_party)
+
     if args.dry_run:
         print(
             json.dumps(
@@ -262,6 +368,7 @@ def main() -> int:
                     "model": args.model,
                     "base_url": args.base_url,
                     "third_party": third_party,
+                    "final_quality_requested": final_requested,
                     "size": args.size,
                     "quality": args.quality,
                     "output_format": args.output_format,
