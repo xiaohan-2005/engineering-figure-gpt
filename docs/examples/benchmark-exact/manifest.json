@@ -1,0 +1,12 @@
+{
+  "slug": "benchmark-exact",
+  "mode": "plot",
+  "input_artifacts": ["brief.md", "request.json", "plot-spec.json"],
+  "output_artifact": "output.svg",
+  "verification": [
+    "synthetic illustrative data are explicitly disclosed",
+    "all six source values are preserved exactly",
+    "bar annotations match the preserved values",
+    "no image model is used for numeric geometry"
+  ]
+}
