@@ -43,13 +43,37 @@ Core rule: **numeric truth overrides aesthetics**. Exact values, axes, error bar
 
 Use GPT image generation for conceptual composition, redraws, and image edits.
 
-Inside Codex, prefer the installed built-in image-generation path. For reproducibility or environments without that path, the repository includes an official OpenAI CLI fallback:
+Inside Codex, prefer the installed built-in image-generation path. For reproducibility or environments without that path, the repository includes a GPT Image-compatible CLI fallback:
 
 ```bash
 python scripts/generate_image.py "A publication-quality system architecture ..." --dry-run
 ```
 
-Remove `--dry-run` only after configuring an OpenAI API key. The fallback defaults to `gpt-image-2`, rejects custom base URLs, and does not silently switch provider, model, quality, or size after a failure.
+The CLI defaults to `gpt-image-2` and official OpenAI. It also supports a custom OpenAI-compatible relay/base URL, but a non-OpenAI endpoint must be explicitly trusted so a key or uploaded edit image is never silently sent to an unexpected host.
+
+Official OpenAI:
+
+```bash
+python scripts/generate_image.py "research figure prompt" --quality high
+```
+
+Trusted relay with environment variables:
+
+```bash
+OPENAI_BASE_URL=https://relay.example/v1 \
+OPENAI_ALLOW_THIRD_PARTY=1 \
+python scripts/generate_image.py "research figure prompt"
+```
+
+Trusted relay with CLI flags:
+
+```bash
+python scripts/generate_image.py "research figure prompt" \
+  --base-url https://relay.example/v1 \
+  --allow-third-party
+```
+
+The fallback never silently switches provider, model, quality, or size after a failure.
 
 ### Plot mode
 
@@ -64,7 +88,7 @@ Supported panel intents:
 - legend-only and empty layout panels
 - multi-panel layouts with width/height ratios
 
-The Plot Mode now has two explicit contracts:
+The Plot Mode has two explicit contracts:
 
 ```text
 concise plot request (`kind`)
@@ -123,7 +147,7 @@ The installer syncs a **pruned runtime package** to:
 
 Repository-only files such as docs, examples, tests, and CI configuration are not copied into the Codex runtime.
 
-The default installer test now performs a real local Plot Mode E2E chain:
+The default installer test performs a real local Plot Mode E2E chain:
 
 ```text
 request → normalized spec → renderer → non-empty PNG
@@ -135,6 +159,14 @@ Setup diagnostics:
 
 ```powershell
 & "$HOME/.codex/skills/engineering-figure-gpt/scripts/check_setup.ps1"
+```
+
+For a relay, configure the environment before the live image test, for example:
+
+```powershell
+$env:OPENAI_BASE_URL = "https://relay.example/v1"
+$env:OPENAI_ALLOW_THIRD_PARTY = "1"
+$env:OPENAI_API_KEY_FILE = "$HOME/.codex/secrets/openai_api_key.txt"
 ```
 
 ## Unified CLI
@@ -175,7 +207,8 @@ The CI pipeline checks more than unit tests:
 - strict Figure Brief schema behavior
 - Plot Request → normalized Plot Spec contract
 - GPT image generation/edit request construction
-- official-endpoint and model safety rules
+- official endpoint defaults plus explicit third-party relay opt-in
+- model safety rules and malformed base-URL rejection
 - HTTP error, timeout, malformed-response, and empty-output failure paths
 - real local plot rendering smoke tests
 - pruned runtime package token budget
@@ -188,11 +221,11 @@ The CI pipeline checks more than unit tests:
 | `SKILL.md` | Codex skill routing and workflow |
 | `assets/prompt-templates/` | bilingual conceptual-figure templates |
 | `references/` | mode rules, Chinese labels, modeling, reliability, reproducibility, quality gates |
-| `scripts/generate_image.py` | GPT-only official OpenAI CLI fallback |
+| `scripts/generate_image.py` | GPT Image-compatible CLI with official OpenAI default and explicit trusted-relay support |
 | `scripts/build_plot_spec.py` | concise request → normalized exact plot spec |
 | `scripts/plot_publication_figure.py` | multi-panel publication plot renderer |
 | `scripts/sync_codex_skill.py` | pruned runtime sync |
-| `scripts/check_setup.ps1` | Windows/Codex diagnostics |
+| `scripts/check_setup.ps1` | Windows/Codex diagnostics, including relay configuration |
 | `schemas/figure-brief.schema.json` | structured figure-planning contract |
 | `schemas/plot-request.schema.json` | user-facing concise plot-request contract |
 | `schemas/plot-spec.schema.json` | normalized renderer-input contract |
@@ -209,6 +242,7 @@ The remaining major gap is **real GPT showcase evidence**. The current conceptua
 - not a full paper-writing system
 - not permission to fabricate missing numeric data
 - not a replacement for checking generated labels and scientific fidelity
+- not a guarantee that every third-party relay implements every OpenAI image parameter identically
 - not a single image prompt that treats diagrams and exact plots as the same problem
 
 ## License
