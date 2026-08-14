@@ -23,7 +23,7 @@ jobs:
         run: python scripts/validate_text_encoding.py SKILL.md README.md README.en.md README.zh-CN.md INSTALL.md agents assets references schemas templates tests secrets
       - name: Validate Chinese prompt templates
         run: python scripts/validate_prompt_templates.py .
-      - name: Documentation smoke check
+      - name: Validate documentation links and images
         run: python scripts/check_docs.py
       - name: Run tests
         run: python -m pytest -q
