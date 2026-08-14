@@ -37,9 +37,11 @@ $required = @(
     "agents/openai.yaml",
     "scripts/efg.py",
     "scripts/generate_image.py",
+    "scripts/build_engineering_figure_prompt.py",
     "scripts/build_plot_spec.py",
     "scripts/plot_publication_figure.py",
-    "assets/prompt-templates/engineering-figure-templates.json"
+    "assets/prompt-templates/engineering-figure-templates.json",
+    "assets/prompt-templates/mathematical-modeling-templates.json"
 )
 foreach ($rel in $required) {
     if (Test-Path (Join-Path $SkillDir $rel)) { Status "PASS" "Found $rel" }
@@ -48,7 +50,7 @@ foreach ($rel in $required) {
 
 $systemImagen = "$HOME/.codex/skills/.system/imagen/SKILL.md"
 if (Test-Path $systemImagen) {
-    Status "PASS" "Codex built-in imagen skill detected; use this as the preferred image path"
+    Status "PASS" "Codex built-in imagen skill detected; use this as the preferred in-agent image path"
 } else {
     Status "WARN" "Built-in imagen skill not detected; portable GPT Image CLI fallback can still be used"
     $warned = $true
@@ -62,11 +64,22 @@ if ($isOfficial) {
     Status "PASS" "Image API base URL uses official OpenAI: $baseUrl"
 } elseif ($thirdPartyAllowed) {
     Status "WARN" "Trusted custom relay enabled: $baseUrl"
-    Write-Host "       The relay will receive the configured API key and any images used for edits." -ForegroundColor Yellow
+    Write-Host "       The relay can receive the configured API key and images used for edits." -ForegroundColor Yellow
+    Write-Host "       Optional compatibility probe: python scripts/efg.py provider-check" -ForegroundColor Cyan
     $warned = $true
 } else {
     Status "WARN" "Custom OPENAI_BASE_URL detected but OPENAI_ALLOW_THIRD_PARTY is not enabled: $baseUrl"
     Write-Host "       Set OPENAI_ALLOW_THIRD_PARTY=1 only if you trust this relay." -ForegroundColor Yellow
+    $warned = $true
+}
+
+$routineModel = if ($env:OPENAI_IMAGE_MODEL) { $env:OPENAI_IMAGE_MODEL } else { "gpt-image-2" }
+Status "PASS" "Routine image model: $routineModel"
+if ($env:OPENAI_IMAGE_HIGHRES_MODEL) {
+    Status "PASS" "Final/high-resolution model configured: $env:OPENAI_IMAGE_HIGHRES_MODEL"
+} else {
+    Status "WARN" "OPENAI_IMAGE_HIGHRES_MODEL is not configured"
+    Write-Host "       Routine image generation is available; --final/--highres requests will fail closed until a final-quality model is configured or explicitly passed." -ForegroundColor Yellow
     $warned = $true
 }
 
