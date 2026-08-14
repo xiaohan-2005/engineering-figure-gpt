@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 import sys
@@ -7,6 +8,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "package_showcase_example.py"
+ONE_PIXEL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 def write(path: Path, text: str) -> Path:
@@ -19,7 +23,7 @@ def test_package_image_example_requires_real_output_and_builds_manifest(tmp_path
     prompt = write(tmp_path / "resolved-prompt.txt", "publication figure prompt\n")
     verification = write(tmp_path / "verification-source.md", "# Verification\nlabels checked\n")
     output = tmp_path / "generated.png"
-    output.write_bytes(b"not-an-empty-image-placeholder-for-packaging-test")
+    output.write_bytes(ONE_PIXEL_PNG)
     destination = tmp_path / "examples"
 
     result = subprocess.run(
@@ -69,7 +73,7 @@ def test_package_plot_example_requires_request_and_spec(tmp_path):
     verification = write(tmp_path / "verification.md", "verified")
     request = write(tmp_path / "request-source.json", "{}")
     spec = write(tmp_path / "spec-source.json", "{}")
-    output = write(tmp_path / "plot.svg", "<svg></svg>")
+    output = write(tmp_path / "plot.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>")
     destination = tmp_path / "examples"
 
     result = subprocess.run(
@@ -164,3 +168,36 @@ def test_packaging_refuses_empty_output(tmp_path):
     )
     assert result.returncode != 0
     assert "Output is empty" in result.stderr
+
+
+def test_packaging_refuses_fake_png_signature(tmp_path):
+    brief = write(tmp_path / "brief.md", "brief")
+    prompt = write(tmp_path / "prompt.txt", "prompt")
+    verification = write(tmp_path / "verification.md", "verified")
+    output = tmp_path / "fake.png"
+    output.write_bytes(b"this is not actually a PNG")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--slug",
+            "fake-png",
+            "--mode",
+            "image",
+            "--brief",
+            str(brief),
+            "--source",
+            f"{prompt}=prompt.txt",
+            "--output",
+            str(output),
+            "--verification",
+            str(verification),
+            "--destination",
+            str(tmp_path / "examples"),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "signature does not match" in result.stderr
