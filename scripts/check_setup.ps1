@@ -13,6 +13,11 @@ function Status([string]$kind, [string]$message) {
     else { Write-Host "[FAIL] $message" -ForegroundColor Red }
 }
 
+function EnvFlagEnabled([string]$value) {
+    if (-not $value) { return $false }
+    return @("1", "true", "yes", "on") -contains $value.Trim().ToLowerInvariant()
+}
+
 Write-Host "Engineering Figure GPT setup check" -ForegroundColor Cyan
 Write-Host "SkillDir   : $SkillDir"
 Write-Host "SecretsDir : $SecretsDir"
@@ -45,7 +50,23 @@ $systemImagen = "$HOME/.codex/skills/.system/imagen/SKILL.md"
 if (Test-Path $systemImagen) {
     Status "PASS" "Codex built-in imagen skill detected; use this as the preferred image path"
 } else {
-    Status "WARN" "Built-in imagen skill not detected; portable OpenAI CLI fallback can still be used"
+    Status "WARN" "Built-in imagen skill not detected; portable GPT Image CLI fallback can still be used"
+    $warned = $true
+}
+
+$baseUrl = if ($env:OPENAI_BASE_URL) { $env:OPENAI_BASE_URL.TrimEnd('/') } else { "https://api.openai.com/v1" }
+$isOfficial = $baseUrl -eq "https://api.openai.com/v1"
+$thirdPartyAllowed = EnvFlagEnabled $env:OPENAI_ALLOW_THIRD_PARTY
+
+if ($isOfficial) {
+    Status "PASS" "Image API base URL uses official OpenAI: $baseUrl"
+} elseif ($thirdPartyAllowed) {
+    Status "WARN" "Trusted custom relay enabled: $baseUrl"
+    Write-Host "       The relay will receive the configured API key and any images used for edits." -ForegroundColor Yellow
+    $warned = $true
+} else {
+    Status "WARN" "Custom OPENAI_BASE_URL detected but OPENAI_ALLOW_THIRD_PARTY is not enabled: $baseUrl"
+    Write-Host "       Set OPENAI_ALLOW_THIRD_PARTY=1 only if you trust this relay." -ForegroundColor Yellow
     $warned = $true
 }
 
@@ -58,14 +79,14 @@ if ($env:OPENAI_API_KEY) {
     if (Test-Path $keyFile) {
         $value = (Get-Content -Raw -Path $keyFile).Trim()
         if ($value -and -not $value.StartsWith("REPLACE_")) {
-            Status "PASS" "OpenAI key file found for CLI fallback"
+            Status "PASS" "API key file found for CLI fallback"
             $keyReady = $true
         } else {
-            Status "WARN" "OpenAI key file is empty or still contains a placeholder"
+            Status "WARN" "API key file is empty or still contains a placeholder"
             $warned = $true
         }
     } else {
-        Status "WARN" "No OpenAI API key configured; this is okay when Codex built-in image generation is available"
+        Status "WARN" "No API key configured; this is okay when Codex built-in image generation is available"
         $warned = $true
     }
 }
@@ -86,6 +107,7 @@ if ($failed) {
 if ($warned) {
     Write-Host "Readiness: READY WITH WARNINGS" -ForegroundColor Yellow
     if (-not $keyReady) { Write-Host "Image CLI fallback will need an API key; Codex built-in image generation may not." }
+    if ((-not $isOfficial) -and (-not $thirdPartyAllowed)) { Write-Host "Custom relay is configured but will be refused until explicitly trusted." }
     exit 0
 }
 Write-Host "Readiness: READY" -ForegroundColor Green
