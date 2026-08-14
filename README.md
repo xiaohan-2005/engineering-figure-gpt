@@ -49,7 +49,7 @@ Inside Codex, prefer the installed built-in image-generation path. For reproduci
 python scripts/generate_image.py "A publication-quality system architecture ..." --dry-run
 ```
 
-Remove `--dry-run` only after configuring an OpenAI API key. The fallback defaults to `gpt-image-2`, rejects custom base URLs, and does not silently switch to non-GPT providers.
+Remove `--dry-run` only after configuring an OpenAI API key. The fallback defaults to `gpt-image-2`, rejects custom base URLs, and does not silently switch provider, model, quality, or size after a failure.
 
 ### Plot mode
 
@@ -64,7 +64,19 @@ Supported panel intents:
 - legend-only and empty layout panels
 - multi-panel layouts with width/height ratios
 
-Typical internal path:
+The Plot Mode now has two explicit contracts:
+
+```text
+concise plot request (`kind`)
+        ↓
+  build_plot_spec.py
+        ↓
+normalized renderer spec (`type`)
+        ↓
+plot_publication_figure.py
+```
+
+Typical path:
 
 ```bash
 python scripts/build_plot_spec.py examples/multi-panel-plot-request.json --out output/spec.json
@@ -111,6 +123,14 @@ The installer syncs a **pruned runtime package** to:
 
 Repository-only files such as docs, examples, tests, and CI configuration are not copied into the Codex runtime.
 
+The default installer test now performs a real local Plot Mode E2E chain:
+
+```text
+request → normalized spec → renderer → non-empty PNG
+```
+
+This is local and has no API cost. A real GPT image request is separate and opt-in with `-TestLiveImage`.
+
 Setup diagnostics:
 
 ```powershell
@@ -127,15 +147,37 @@ python scripts/efg.py plot output/spec.json --out-path output/figure --formats p
 python scripts/efg.py check
 ```
 
+## Reproducibility contract
+
+For a conceptual showcase example, preserve:
+
+```text
+Figure Brief → Final Prompt → Real GPT Output → Verification
+```
+
+For a quantitative example, preserve:
+
+```text
+Plot Request → Normalized Plot Spec → Renderer → Real Output → Verification
+```
+
+See [Reproducibility Chain](references/reproducibility-chain.md) and [Reproducible Examples](docs/examples/README.md).
+
 ## Validation
 
 The CI pipeline checks more than unit tests:
 
 - Python compilation
-- `SKILL.md` package structure
+- exact `SKILL.md` metadata and required runtime files
 - UTF-8 / common Chinese mojibake regressions
 - Chinese prompt-template integrity
-- prompt / CLI / plot tests
+- local Markdown links and image paths
+- strict Figure Brief schema behavior
+- Plot Request → normalized Plot Spec contract
+- GPT image generation/edit request construction
+- official-endpoint and model safety rules
+- HTTP error, timeout, malformed-response, and empty-output failure paths
+- real local plot rendering smoke tests
 - pruned runtime package token budget
 - offline CLI smoke checks
 
@@ -145,15 +187,22 @@ The CI pipeline checks more than unit tests:
 |---|---|
 | `SKILL.md` | Codex skill routing and workflow |
 | `assets/prompt-templates/` | bilingual conceptual-figure templates |
-| `references/` | mode rules, Chinese labels, mathematical-modeling guidance |
+| `references/` | mode rules, Chinese labels, modeling, reliability, reproducibility, quality gates |
 | `scripts/generate_image.py` | GPT-only official OpenAI CLI fallback |
 | `scripts/build_plot_spec.py` | concise request → normalized exact plot spec |
 | `scripts/plot_publication_figure.py` | multi-panel publication plot renderer |
 | `scripts/sync_codex_skill.py` | pruned runtime sync |
 | `scripts/check_setup.ps1` | Windows/Codex diagnostics |
-| `schemas/` | figure-brief and plot-request contracts |
-| `examples/` | reproducible inputs |
-| `tests/` | offline tests |
+| `schemas/figure-brief.schema.json` | structured figure-planning contract |
+| `schemas/plot-request.schema.json` | user-facing concise plot-request contract |
+| `schemas/plot-spec.schema.json` | normalized renderer-input contract |
+| `examples/` | reproducible plot/brief inputs |
+| `docs/examples/` | contract for real reproducible showcase outputs |
+| `tests/` | offline unit, contract, safety, and E2E tests |
+
+## Showcase status
+
+The remaining major gap is **real GPT showcase evidence**. The current conceptual SVGs remain deliberately labeled as layout previews until real runs can be committed with their actual brief, prompt, output, and verification note.
 
 ## What it is not
 
