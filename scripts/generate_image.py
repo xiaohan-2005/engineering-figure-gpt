@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Portable GPT-only image generation/editing fallback for Engineering Figure GPT.
+"""Portable GPT-image generation/editing fallback for Engineering Figure GPT.
 
 Inside Codex, prefer the built-in image-generation path. This CLI exists for reproducibility,
 local testing, and environments where the built-in image tool is unavailable.
+
+Official OpenAI is trusted by default. OpenAI-compatible relay/base URLs are supported only
+with explicit opt-in via --allow-third-party or OPENAI_ALLOW_THIRD_PARTY=1 so credentials are
+never silently sent to an unexpected host.
 """
 
 from __future__ import annotations
@@ -12,20 +16,27 @@ import base64
 import json
 import mimetypes
 import os
+import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-image-2"
+OFFICIAL_HOST = "api.openai.com"
+
+
+def env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def read_key(args: argparse.Namespace) -> str:
-    if args.api_key:
+    if getattr(args, "api_key", None):
         return args.api_key.strip()
     if os.getenv("OPENAI_API_KEY"):
         return os.environ["OPENAI_API_KEY"].strip()
-    key_file = args.api_key_file or os.getenv("OPENAI_API_KEY_FILE")
+    key_file = getattr(args, "api_key_file", None) or os.getenv("OPENAI_API_KEY_FILE")
     if key_file:
         path = Path(key_file).expanduser()
         if path.is_file():
@@ -37,29 +48,52 @@ def read_key(args: argparse.Namespace) -> str:
         value = default.read_text(encoding="utf-8").strip()
         if value:
             return value
-    raise SystemExit("Missing OpenAI API key. Set OPENAI_API_KEY or OPENAI_API_KEY_FILE.")
+    raise SystemExit("Missing API key. Set OPENAI_API_KEY or OPENAI_API_KEY_FILE.")
 
 
 def read_prompt(args: argparse.Namespace) -> str:
-    if args.prompt_file:
+    if getattr(args, "prompt_file", None):
         text = Path(args.prompt_file).read_text(encoding="utf-8").strip()
         if text:
             return text
         raise SystemExit("Prompt file is empty.")
-    if args.prompt and args.prompt.strip():
+    if getattr(args, "prompt", None) and args.prompt.strip():
         return args.prompt.strip()
     raise SystemExit("Provide a prompt or --prompt-file.")
 
 
-def validate_target(args: argparse.Namespace) -> None:
-    if args.base_url.rstrip("/") != DEFAULT_BASE_URL:
-        raise SystemExit("Custom base URLs are intentionally rejected; this skill uses the official OpenAI endpoint only.")
-    if not args.model.startswith("gpt-image-"):
-        raise SystemExit("Only GPT Image models are allowed by this GPT-only skill.")
-    if args.n < 1:
+def normalized_base_url(value: str) -> str:
+    value = (value or "").strip().rstrip("/")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise SystemExit("--base-url must be a valid http(s) URL, for example https://api.example.com/v1")
+    if parsed.username or parsed.password:
+        raise SystemExit("Do not embed credentials in --base-url; use API-key configuration instead.")
+    return value
+
+
+def is_official_base_url(base_url: str) -> bool:
+    parsed = urlparse(base_url)
+    return parsed.scheme == "https" and (parsed.hostname or "").lower() == OFFICIAL_HOST
+
+
+def validate_target(args: argparse.Namespace) -> bool:
+    args.base_url = normalized_base_url(args.base_url)
+    third_party = not is_official_base_url(args.base_url)
+    allow_third_party = bool(getattr(args, "allow_third_party", False)) or env_flag("OPENAI_ALLOW_THIRD_PARTY")
+    if third_party and not allow_third_party:
+        raise SystemExit(
+            "Custom/relay base URL detected. Re-run with --allow-third-party or set "
+            "OPENAI_ALLOW_THIRD_PARTY=1 after you trust that endpoint."
+        )
+    model = str(getattr(args, "model", ""))
+    if not model.startswith("gpt-image-"):
+        raise SystemExit("Only GPT Image model names are allowed by this GPT-only skill.")
+    if int(getattr(args, "n", 1)) < 1:
         raise SystemExit("--n must be at least 1.")
-    if args.timeout <= 0:
+    if int(getattr(args, "timeout", 240)) <= 0:
         raise SystemExit("--timeout must be positive.")
+    return third_party
 
 
 def api_error(operation: str, response) -> str:
@@ -76,7 +110,7 @@ def api_error(operation: str, response) -> str:
     if len(message) > 1000:
         message = message[:1000] + "..."
     suffix = f": {message}" if message else ""
-    return f"OpenAI image {operation} failed ({response.status_code}){suffix}"
+    return f"Image {operation} request failed ({response.status_code}){suffix}"
 
 
 def response_json(operation: str, response) -> dict:
@@ -85,9 +119,9 @@ def response_json(operation: str, response) -> dict:
     try:
         payload = response.json()
     except ValueError as exc:
-        raise SystemExit(f"OpenAI image {operation} returned a non-JSON response.") from exc
+        raise SystemExit(f"Image {operation} request returned a non-JSON response.") from exc
     if not isinstance(payload, dict):
-        raise SystemExit(f"OpenAI image {operation} returned an unexpected response type.")
+        raise SystemExit(f"Image {operation} request returned an unexpected response type.")
     return payload
 
 
@@ -146,9 +180,9 @@ def generation_request(args: argparse.Namespace, prompt: str, headers: dict) -> 
             timeout=args.timeout,
         )
     except requests.Timeout as exc:
-        raise SystemExit(f"OpenAI image generation timed out after {args.timeout}s.") from exc
+        raise SystemExit(f"Image generation timed out after {args.timeout}s.") from exc
     except requests.RequestException as exc:
-        raise SystemExit(f"OpenAI image generation network error: {exc}") from exc
+        raise SystemExit(f"Image generation network error: {exc}") from exc
     return response_json("generation", response)
 
 
@@ -185,9 +219,9 @@ def edit_request(args: argparse.Namespace, prompt: str, headers: dict) -> dict:
                 timeout=args.timeout,
             )
         except requests.Timeout as exc:
-            raise SystemExit(f"OpenAI image edit timed out after {args.timeout}s.") from exc
+            raise SystemExit(f"Image edit timed out after {args.timeout}s.") from exc
         except requests.RequestException as exc:
-            raise SystemExit(f"OpenAI image edit network error: {exc}") from exc
+            raise SystemExit(f"Image edit network error: {exc}") from exc
         return response_json("edit", response)
     finally:
         for handle in handles:
@@ -195,19 +229,20 @@ def edit_request(args: argparse.Namespace, prompt: str, headers: dict) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate or edit research figures with GPT Image 2.")
+    parser = argparse.ArgumentParser(description="Generate or edit research figures with a GPT Image-compatible API.")
     parser.add_argument("prompt", nargs="?")
     parser.add_argument("--prompt-file")
     parser.add_argument("--input-image", action="append", default=[], help="Input image for editing; may be repeated.")
     parser.add_argument("--model", default=os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_MODEL))
-    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL))
+    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL), help="Official OpenAI or explicitly approved OpenAI-compatible relay base URL, usually ending in /v1.")
+    parser.add_argument("--allow-third-party", action="store_true", default=env_flag("OPENAI_ALLOW_THIRD_PARTY"), help="Allow a non-OpenAI relay/base URL. Only enable for an endpoint you trust.")
     parser.add_argument("--api-key")
     parser.add_argument("--api-key-file")
     parser.add_argument("--quality", choices=("low", "medium", "high", "auto"), default=os.getenv("OPENAI_IMAGE_QUALITY", "high"))
     parser.add_argument("--size", default=os.getenv("OPENAI_IMAGE_SIZE", "1536x1024"))
     parser.add_argument("--output-format", choices=("png", "jpeg", "webp"), default=os.getenv("OPENAI_IMAGE_OUTPUT_FORMAT", "png"))
     parser.add_argument("--background", choices=("transparent", "opaque", "auto"))
-    parser.add_argument("--input-fidelity", choices=("low", "high"), default=None, help="Explicit input fidelity for image edits when supported by the selected GPT Image model.")
+    parser.add_argument("--input-fidelity", choices=("low", "high"), default=None, help="Explicit input fidelity for image edits when supported by the selected endpoint/model.")
     parser.add_argument("--n", type=int, default=1)
     parser.add_argument("--out-dir", default="output/image")
     parser.add_argument("--prefix", default="engineering-figure-gpt")
@@ -216,13 +251,17 @@ def main() -> int:
     args = parser.parse_args()
 
     prompt = read_prompt(args)
-    validate_target(args)
+    third_party = validate_target(args)
+    if third_party:
+        print(f"[WARN] Using explicitly approved third-party relay: {args.base_url}", file=sys.stderr)
     if args.dry_run:
         print(
             json.dumps(
                 {
                     "mode": "edit" if args.input_image else "generate",
                     "model": args.model,
+                    "base_url": args.base_url,
+                    "third_party": third_party,
                     "size": args.size,
                     "quality": args.quality,
                     "output_format": args.output_format,
