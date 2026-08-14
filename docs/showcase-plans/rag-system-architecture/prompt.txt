@@ -1,0 +1,32 @@
+Create a publication-quality landscape system-architecture figure for a Retrieval-Augmented Generation (RAG) pipeline. The figure must look like a research-paper architecture diagram rather than a SaaS marketing infographic.
+
+Organize the architecture into two clearly separated but connected paths.
+
+Offline / indexing path:
+Documents + Web + Structured Data → Parsing / OCR → Chunking + Metadata → Embedding → Vector Index / Knowledge Store.
+
+Online / query path:
+User Query → Query Processing → Retriever → Reranker → Context Assembly → LLM Generation → Answer + Citations.
+
+The Vector Index / Knowledge Store is a shared storage component. Show the Retriever querying this store. Visually distinguish storage from processing modules. Do not duplicate the store unless needed for layout. The offline indexing path should feed the store; the online retrieval path should read from it.
+
+Must-keep labels, spelled exactly and kept short:
+Documents, Web, Structured Data, Parsing / OCR, Chunking + Metadata, Embedding, Vector Index / Knowledge Store, User Query, Query Processing, Retriever, Reranker, Context Assembly, LLM Generation, Answer + Citations.
+
+Scientific/technical constraints:
+- Retrieval must precede reranking.
+- Reranking must precede context assembly and generation.
+- Do not add unsupported agents, memory modules, graph databases, query rewriting, fine-tuning, evaluation modules, monitoring systems, or feedback loops.
+- Do not invent latency, accuracy, recall, dataset size, vector dimension, model version, token counts, confidence values, or benchmark claims.
+- “Answer + Citations” is only an output label; do not visually imply that citations guarantee factual correctness.
+
+Visual design:
+- white background;
+- landscape composition with strong left-to-right reading order;
+- clearly labeled sections such as “Offline Indexing” and “Online Retrieval & Generation” if useful;
+- restrained blue, teal, and neutral-gray academic palette;
+- consistent rounded processing modules, a distinct database/storage shape for the Vector Index / Knowledge Store, thin directional arrows, disciplined spacing, and strong alignment;
+- compact but readable information density suitable for a computer-science paper;
+- no vendor logos, decorative clouds, stock icons, photorealistic imagery, neon gradients, 3D effects, watermarks, fake references, or unrelated text.
+
+The final image should communicate the complete RAG data flow at a glance while remaining technically conservative and easy to edit or relabel before publication.

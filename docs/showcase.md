@@ -24,6 +24,21 @@ The numeric semantics of these cases are deterministic. Re-rendering with a diff
 
 ---
 
+## Real conceptual-output queue
+
+Four concept cases are now prepared with a **Figure Brief + final prompt** and are waiting only for a real GPT Image run:
+
+- [Chinese mathematical-modeling framework](showcase-plans/zh-mathematical-modeling-framework/brief.md)
+- [RAG system architecture](showcase-plans/rag-system-architecture/brief.md)
+- [Genetic-algorithm workflow](showcase-plans/genetic-algorithm-workflow/brief.md)
+- [Multi-source fusion graphical abstract](showcase-plans/multisource-fusion-graphical-abstract/brief.md)
+
+See the [Real Conceptual Showcase Queue](showcase-plans/README.md) for official OpenAI / trusted-relay run commands, verification, and packaging instructions.
+
+These plan directories deliberately contain **no `output.png` and no completed `manifest.json`**. CI enforces that rule so an ungenerated plan cannot be mistaken for real showcase evidence.
+
+---
+
 ## Conceptual capability previews
 
 The following SVGs are **layout previews only**. They are deliberately kept separate from the reproducible examples above and are not claims that a particular GPT run produced them.

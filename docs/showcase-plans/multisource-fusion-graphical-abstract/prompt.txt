@@ -1,0 +1,43 @@
+Create a publication-quality landscape graphical abstract for a generic multi-source data-fusion framework in an AI/data-science paper. The figure should communicate one compact scientific story without inventing performance claims.
+
+Use four major stages from left to right:
+
+1. Multi-source Data
+   - Structured Data
+   - Images
+   - Text
+
+2. Feature Extraction & Alignment
+   Show that each modality is transformed into a compatible representation before fusion. Use simple abstract visual cues, not vendor-specific model logos.
+
+3. Fusion Module
+   Visually communicate integration of the aligned representations into a unified representation. This may use a clean node/feature-merging motif, but do not draw fake equations, unsupported attention mechanisms, or a specific neural architecture.
+
+4. Prediction / Decision
+   Show a generic downstream output stage only. Do not name a task, class, diagnosis, recommendation, or control action that was not supplied.
+
+A narrow secondary strip beneath the main pipeline may contain the labels:
+Robustness · Interpretability · Efficiency
+These are evaluation considerations, not achieved outcomes. Do not use checkmarks, awards, upward arrows, percentages, or other visual language that would imply they have already been proven.
+
+Must-keep labels, spelled exactly:
+Multi-source Data, Structured Data, Images, Text, Feature Extraction & Alignment, Fusion Module, Prediction / Decision, Robustness, Interpretability, Efficiency.
+
+Scientific constraints:
+- Keep the three input modalities visually distinct before Feature Extraction & Alignment.
+- Feature Extraction & Alignment must precede Fusion Module.
+- Fusion Module must precede Prediction / Decision.
+- Do not invent datasets, sample sizes, modality dimensions, model names, loss functions, accuracy improvements, ablation results, causal claims, or statistical significance.
+- Do not include exact plots, axes, benchmark bars, or fabricated numeric annotations.
+
+Visual design:
+- white background;
+- clean graphical-abstract composition, landscape and publication-ready;
+- restrained blue, teal, neutral gray, with at most one small warm accent color;
+- strong alignment and generous whitespace;
+- consistent rounded cards/modules and thin directional arrows;
+- subtle semantic icons for structured tables, images, and text are allowed, but icons must remain secondary to readable labels;
+- minimal text density and no paragraphs inside the figure;
+- no photorealistic imagery, 3D effects, neon gradients, vendor logos, fake citations, watermarks, or decorative scientific symbols with no meaning.
+
+The final figure should feel polished enough for a paper graphical abstract while remaining scientifically conservative, editable in spirit, and easy to verify against the preserved Figure Brief.
