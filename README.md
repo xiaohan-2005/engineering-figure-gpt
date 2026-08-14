@@ -16,13 +16,16 @@ Conceptual figures use GPT image generation. Exact quantitative figures stay loc
 
 </div>
 
-## Preview
+## Reproducible outputs + conceptual preview
 
-| Modeling framework preview | Exact-plot layout preview |
+| Exact benchmark output | Sensitivity / robustness output |
 |---|---|
-| ![Modeling framework](docs/showcase/model-framework.svg) | ![Benchmark plot](docs/showcase/benchmark-plot.svg) |
+| ![Exact benchmark](docs/examples/benchmark-exact/output.svg) | ![Sensitivity and robustness](docs/examples/sensitivity-robustness/output.svg) |
+| [brief](docs/examples/benchmark-exact/brief.md) · [request](docs/examples/benchmark-exact/request.json) · [spec](docs/examples/benchmark-exact/plot-spec.json) · [verification](docs/examples/benchmark-exact/verification.md) | [brief](docs/examples/sensitivity-robustness/brief.md) · [request](docs/examples/sensitivity-robustness/request.json) · [spec](docs/examples/sensitivity-robustness/plot-spec.json) · [verification](docs/examples/sensitivity-robustness/verification.md) |
 
-The conceptual SVGs currently committed to the repository are **layout previews**, not claims that a GPT run generated them. Real generated outputs must be paired with their brief/prompt and verification record before being presented as reproducible showcase evidence.
+Both datasets are intentionally **synthetic/illustrative**. They demonstrate the exact Plot Mode evidence chain and are not scientific claims.
+
+Conceptual SVGs under `docs/showcase/` are still **layout previews**, not claims that GPT generated them. A conceptual case only becomes a real showcase example after its actual `brief + prompt + output + verification` chain is committed.
 
 ## Why this skill exists
 
@@ -101,7 +104,7 @@ Natural language is the user interface; JSON is internal execution data.
 
 Supported panel intents include grouped bars, error bars, trend curves, uncertainty shadows, heatmaps, scatter plots, legend-only panels, and multi-panel layouts.
 
-The two internal contracts are:
+The internal contracts are:
 
 ```text
 concise Plot Request (`kind`)
@@ -113,7 +116,7 @@ normalized Plot Spec (`type`)
 plot_publication_figure.py
 ```
 
-The user-facing one-command route is now:
+The user-facing one-command route is:
 
 ```bash
 python scripts/efg.py plot examples/multi-panel-plot-request.json \
@@ -122,7 +125,7 @@ python scripts/efg.py plot examples/multi-panel-plot-request.json \
   --formats png pdf svg
 ```
 
-If a normalized spec already exists, use:
+If a normalized spec already exists:
 
 ```bash
 python scripts/efg.py render output/spec.json --out-path output/figure --formats png pdf svg
@@ -136,7 +139,7 @@ Render exact quantitative panels locally first. Generate conceptual panels separ
 
 ## Mathematical modeling is a dedicated domain pack
 
-The project now includes two prompt packs:
+The project includes two prompt packs:
 
 ```text
 assets/prompt-templates/engineering-figure-templates.json
@@ -167,7 +170,7 @@ List all available templates:
 python scripts/build_engineering_figure_prompt.py --list-templates
 ```
 
-Chinese and bilingual academic labels are treated as first-class workflows. Exact forecast curves, Pareto fronts, sensitivity indices, robustness curves, confusion matrices, and benchmark values remain local/deterministic.
+Chinese and bilingual academic labels are first-class workflows. Exact forecast curves, Pareto fronts, sensitivity indices, robustness curves, confusion matrices, and benchmark values remain local/deterministic.
 
 ## Install for Codex
 
@@ -206,7 +209,7 @@ Interactive wizard:
 & "$HOME/.codex/skills/engineering-figure-gpt/scripts/wizard.ps1"
 ```
 
-The wizard can now select templates, use official OpenAI or a trusted relay, run provider compatibility checks, request final/high-resolution routing, and execute one-command Plot Mode.
+The wizard can select templates, use official OpenAI or a trusted relay, run provider compatibility checks, request final/high-resolution routing, and execute one-command Plot Mode.
 
 ## Relay configuration
 
@@ -278,6 +281,8 @@ CI checks include:
 - local Markdown links and image paths
 - Figure Brief schema behavior
 - Plot Request → normalized Plot Spec contracts
+- completed showcase manifest/artifact resolution
+- completed plot showcase Request/Spec schema validation
 - image generation/edit request construction
 - official endpoint defaults plus explicit trusted-relay opt-in
 - malformed base URL and embedded-credential rejection
@@ -302,13 +307,13 @@ CI checks include:
 | `scripts/check_setup.ps1` | Windows/Codex diagnostics |
 | `scripts/wizard.ps1` | guided interactive setup/run flow |
 | `schemas/` | Figure Brief, Plot Request, normalized Plot Spec contracts |
-| `examples/` | reproducible plot/brief inputs |
-| `docs/examples/` | contract for real reproducible showcase outputs |
+| `examples/` | reusable plot/brief inputs |
+| `docs/examples/` | completed reproducible showcase evidence |
 | `tests/` | offline unit, contract, safety, and E2E tests |
 
 ## Showcase status
 
-The remaining major product gap is **real GPT showcase evidence**. The current conceptual SVGs remain deliberately labeled as layout previews until real runs are committed with their actual brief, prompt, output, and verification note.
+**Exact Plot Mode now has real reproducible showcase evidence.** The remaining major showcase gap is **real GPT conceptual output**. Conceptual SVGs stay labeled as layout previews until actual GPT runs are committed with their brief, prompt, output, verification, and manifest.
 
 ## What it is not
 
