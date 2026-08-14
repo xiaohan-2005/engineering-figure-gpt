@@ -60,7 +60,24 @@
 
 在 Codex 内，优先使用已经安装的内置 GPT 图像生成能力。
 
-为了可复现和便携运行，仓库同时提供 `scripts/generate_image.py`，默认使用 `gpt-image-2`，并且故意拒绝第三方 Base URL，只允许官方 OpenAI endpoint。
+为了可复现和便携运行，仓库同时提供 `scripts/generate_image.py`，默认使用 `gpt-image-2` 和官方 OpenAI 地址；**也支持自定义 OpenAI-compatible 中转站 Base URL**。
+
+为了避免环境变量被错误修改后把 API Key 或编辑图片静默发送到陌生服务，自定义地址需要显式开启：
+
+```text
+OPENAI_BASE_URL=https://你的中转站/v1
+OPENAI_ALLOW_THIRD_PARTY=1
+```
+
+也可以直接通过 CLI：
+
+```bash
+python scripts/generate_image.py "科研配图提示词" \
+  --base-url https://你的中转站/v1 \
+  --allow-third-party
+```
+
+官方 OpenAI 地址不需要 `--allow-third-party`。
 
 ### Plot Mode
 
@@ -153,16 +170,41 @@ git clone https://github.com/xiaohan-2005/engineering-figure-gpt.git "$HOME/engi
 
 `docs/`、`examples/`、`tests/`、GitHub CI 等仓库文件不会全部塞进 Codex Runtime。
 
+## 中转站配置
+
+PowerShell 示例：
+
+```powershell
+$env:OPENAI_BASE_URL = "https://你的中转站/v1"
+$env:OPENAI_ALLOW_THIRD_PARTY = "1"
+$env:OPENAI_API_KEY_FILE = "$HOME/.codex/secrets/openai_api_key.txt"
+```
+
+然后先做不收费的 dry-run：
+
+```powershell
+python scripts/generate_image.py "test research figure" --dry-run
+```
+
+输出中应该看到：
+
+```text
+"third_party": true
+```
+
+只有在你确认中转站可信后才应设置 `OPENAI_ALLOW_THIRD_PARTY=1`，因为中转站会接收到对应 API Key；图片编辑时还会接收到输入图片。
+
 ## 安装后的真实验收
 
-默认的 `install_and_test.ps1` 现在不只是检查文件是否存在，它还会：
+默认的 `install_and_test.ps1` 会：
 
 1. 检查 Python 和 Runtime 文件；
 2. 运行离线 CLI smoke test；
-3. 创建临时 Plot Spec；
-4. 使用安装后的 Runtime **真实渲染一张 PNG**；
-5. 检查 PNG 是否存在且非空；
-6. 清理临时文件。
+3. 创建临时 Plot Request；
+4. 转换为 normalized Plot Spec；
+5. 使用安装后的 Runtime **真实渲染一张 PNG**；
+6. 检查 PNG 是否存在且非空；
+7. 清理临时文件。
 
 这一步完全本地执行，不产生 API 费用。
 
@@ -172,7 +214,7 @@ git clone https://github.com/xiaohan-2005/engineering-figure-gpt.git "$HOME/engi
 & "$HOME/engineering-figure-gpt/scripts/install_and_test.ps1" -SkipDependencies -TestLiveImage
 ```
 
-这个选项会产生一次真实网络请求，因此默认关闭。
+如果使用中转站，请先设置上面的 `OPENAI_BASE_URL` 和 `OPENAI_ALLOW_THIRD_PARTY=1`。这个选项会产生一次真实网络请求，因此默认关闭。
 
 ## Unified CLI
 
@@ -199,16 +241,24 @@ Figure Brief 是“论文想表达什么”和“最终怎么画”之间的中�
 - output formats
 - verification checklist
 
-现在 `panels` 已使用更严格 Schema：每个 Panel 至少要包含 `name` 和 `content`，避免 Agent 产生无结构的垃圾 Panel 数据。
+`panels` 使用严格 Schema：每个 Panel 至少要包含 `name` 和 `content`，避免 Agent 产生无结构的垃圾 Panel 数据。
 
 Schema： [schemas/figure-brief.schema.json](schemas/figure-brief.schema.json)
 
 ## GPT Image CLI fallback
 
-生成：
+官方 OpenAI 生成：
 
 ```bash
 python scripts/generate_image.py "Create a publication-quality architecture figure ..." --quality high --size 1536x1024
+```
+
+中转站生成：
+
+```bash
+python scripts/generate_image.py "Create a publication-quality architecture figure ..." \
+  --base-url https://你的中转站/v1 \
+  --allow-third-party
 ```
 
 编辑：
@@ -236,6 +286,11 @@ GitHub Actions 当前检查：
 - UTF-8 与常见中文乱码
 - 中英文 Prompt 模板
 - 本地 Markdown 链接和图片路径
+- Figure Brief / Plot Request / Plot Spec 数据契约
+- GPT Image generation/edit 请求构造
+- 官方地址默认安全策略
+- 自定义中转站显式 opt-in
+- malformed URL / model / timeout / HTTP failure
 - 单元测试
 - Runtime pruning
 - Runtime token budget
@@ -267,7 +322,8 @@ Real GPT Output
 4. GPT 用在真正需要语义构图的地方。
 5. 中文科研和数学建模是一等场景。
 6. Runtime 必须精简、可检查。
-7. 最终输出尽量保留可复现证据链。
+7. 自定义中转站必须显式信任，不静默发送凭据。
+8. 最终输出尽量保留可复现证据链。
 
 ## License
 
