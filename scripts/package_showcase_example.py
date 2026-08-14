@@ -2,8 +2,8 @@
 """Package a completed research-figure run into a reproducible docs/examples case.
 
 This script is repository tooling, not part of the pruned Codex runtime. It refuses to
-create a completed manifest unless the referenced evidence and output files really exist
-and are non-empty.
+create a completed manifest unless the referenced evidence and output files really exist,
+are non-empty, and have a plausible file signature for their declared format.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DESTINATION = ROOT / "docs" / "examples"
 MANIFEST_SCHEMA = DEFAULT_DESTINATION / "example-manifest.schema.json"
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SUPPORTED_OUTPUT_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".svg", ".pdf"}
 
 
 def existing_file(value: str, label: str) -> Path:
@@ -29,6 +30,27 @@ def existing_file(value: str, label: str) -> Path:
     if path.stat().st_size <= 0:
         raise SystemExit(f"{label} is empty: {path}")
     return path
+
+
+def validate_output_file(path: Path) -> None:
+    suffix = path.suffix.lower()
+    if suffix not in SUPPORTED_OUTPUT_SUFFIXES:
+        raise SystemExit(f"Unsupported showcase output format: {suffix or '<none>'}")
+    head = path.read_bytes()[:64]
+    valid = False
+    if suffix == ".png":
+        valid = head.startswith(b"\x89PNG\r\n\x1a\n")
+    elif suffix in {".jpg", ".jpeg"}:
+        valid = head.startswith(b"\xff\xd8\xff")
+    elif suffix == ".webp":
+        valid = len(head) >= 12 and head.startswith(b"RIFF") and head[8:12] == b"WEBP"
+    elif suffix == ".pdf":
+        valid = head.startswith(b"%PDF-")
+    elif suffix == ".svg":
+        text = path.read_text(encoding="utf-8-sig", errors="strict").lstrip()
+        valid = text.startswith("<svg") or (text.startswith("<?xml") and "<svg" in text[:1000])
+    if not valid:
+        raise SystemExit(f"Output file signature does not match {suffix}: {path}")
 
 
 def copy_required(source: Path, target: Path) -> None:
@@ -94,7 +116,7 @@ def main() -> int:
         default=[],
         help="Evidence source file. Use PATH=DESTNAME to normalize names, e.g. final-prompt.txt=prompt.txt. Repeat as needed.",
     )
-    parser.add_argument("--output", required=True, help="Real non-empty output file to package.")
+    parser.add_argument("--output", required=True, help="Real PNG/JPEG/WebP/SVG/PDF output file to package.")
     parser.add_argument("--verification", required=True, help="Verification markdown file.")
     parser.add_argument("--check", action="append", default=[], help="Short verified statement for manifest.json; may be repeated.")
     parser.add_argument("--model")
@@ -110,13 +132,14 @@ def main() -> int:
     brief = existing_file(args.brief, "Brief")
     verification = existing_file(args.verification, "Verification")
     output = existing_file(args.output, "Output")
+    validate_output_file(output)
     pairs = [source_pair(item) for item in args.source]
     source_names = [name for _, name in pairs]
     if len(source_names) != len(set(source_names)):
         raise SystemExit("Source destination filenames must be unique")
     validate_mode_sources(args.mode, set(source_names))
 
-    output_name = f"output{output.suffix.lower()}" if output.suffix else "output.bin"
+    output_name = f"output{output.suffix.lower()}"
     manifest = build_manifest(args, source_names, output_name)
     validate_manifest(manifest)
 
