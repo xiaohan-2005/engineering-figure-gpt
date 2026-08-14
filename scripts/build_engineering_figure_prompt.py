@@ -52,7 +52,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build an Engineering Figure GPT prompt.")
     parser.add_argument("background", nargs="?", help="Paper or technical background.")
     parser.add_argument("--background-file", help="Read paper or technical background from a UTF-8 file.")
-    parser.add_argument("--figure-template", required=True, choices=tuple(sorted(templates.keys())))
+    parser.add_argument("--figure-template", choices=tuple(sorted(templates.keys())))
     parser.add_argument("--lang", choices=("en", "zh"), default=None)
     parser.add_argument("--style-note")
     parser.add_argument("--out", help="Optional prompt output path.")
@@ -63,6 +63,8 @@ def main() -> int:
         for name in sorted(templates):
             print(name)
         return 0
+    if not args.figure_template:
+        raise SystemExit("Provide --figure-template, or use --list-templates to inspect available templates.")
 
     background = args.background
     if args.background_file:
