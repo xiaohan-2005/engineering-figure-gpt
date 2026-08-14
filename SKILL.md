@@ -1,6 +1,6 @@
 ---
 name: engineering-figure-gpt
-description: Use when the user needs publication-style engineering, computer-science, data-science, AI, electronics, or mathematical-modeling figures. Prefer this skill for system architectures, algorithm workflows, graphical abstracts, model-framework diagrams, benchmark charts, ablation plots, trend/scatter/heatmap panels, figure redraws, and image edits. Use Codex built-in GPT image generation for conceptual figures when available, an official OpenAI GPT Image 2 CLI fallback for reproducibility, and local plotting for exact quantitative figures.
+description: Use when the user needs publication-style engineering, computer-science, data-science, AI, electronics, or mathematical-modeling figures. Prefer this skill for system architectures, algorithm workflows, graphical abstracts, model-framework diagrams, benchmark charts, ablation plots, trend/scatter/heatmap panels, figure redraws, and image edits. Use Codex built-in GPT image generation for conceptual figures when available, a GPT Image-compatible CLI fallback with official OpenAI or explicitly approved relay URLs for reproducibility, and local plotting for exact quantitative figures.
 ---
 
 # Engineering Figure GPT
@@ -34,7 +34,7 @@ Never use image generation for exact numeric geometry, axes, uncertainty bars, b
 3. Choose `image`, `plot`, or `mixed`.
 4. For conceptual figures, choose the closest template in `assets/prompt-templates/engineering-figure-templates.json` and adapt it to the scientific content.
 5. Inside Codex, prefer the installed built-in image-generation capability for normal conceptual generation/editing.
-6. When a portable or reproducible CLI path is requested, use `scripts/generate_image.py`, which is intentionally restricted to the official OpenAI endpoint and defaults to `gpt-image-2`.
+6. When a portable or reproducible CLI path is requested, use `scripts/generate_image.py`. Official OpenAI works without extra trust flags. A custom OpenAI-compatible relay/base URL is allowed only after explicit opt-in with `--allow-third-party` or `OPENAI_ALLOW_THIRD_PARTY=1`.
 7. For exact plots, treat natural language as the user interface and JSON as an internal format. Follow `references/natural-language-plot-workflow.md`.
 8. Normalize concise plot requests with `scripts/build_plot_spec.py`, then render with `scripts/plot_publication_figure.py`.
 9. In mixed mode, render quantitative panels first and never ask the image model to redraw them.
@@ -53,10 +53,26 @@ Rules:
 - for Chinese figures, keep labels concise and preserve established English abbreviations when they improve readability
 - for final paper use, inspect generated text carefully; regenerate or edit if labels are malformed
 
-Portable fallback:
+Portable fallback with official OpenAI:
 
 ```bash
 python scripts/generate_image.py "publication-quality architecture figure ..." --quality high --size 1536x1024
+```
+
+Portable fallback with an explicitly trusted OpenAI-compatible relay:
+
+```bash
+OPENAI_BASE_URL=https://relay.example/v1 \
+OPENAI_ALLOW_THIRD_PARTY=1 \
+python scripts/generate_image.py "publication-quality architecture figure ..."
+```
+
+or:
+
+```bash
+python scripts/generate_image.py "publication-quality architecture figure ..." \
+  --base-url https://relay.example/v1 \
+  --allow-third-party
 ```
 
 Edit an existing image:
@@ -65,7 +81,7 @@ Edit an existing image:
 python scripts/generate_image.py "keep structure, improve hierarchy and labels" --input-image input.png --input-fidelity high
 ```
 
-The CLI fallback requires an OpenAI API key. Do not commit keys to the repository.
+The CLI fallback requires an API key accepted by the selected endpoint. Do not commit keys to the repository. Never enable a third-party relay unless the user trusts that service with the supplied key and any uploaded images.
 
 ## Plot Mode
 
@@ -112,6 +128,7 @@ Read only what the task needs:
 - `references/mathematical-modeling.md`
 - `references/chinese-labels.md`
 - `references/gpt-image-2-guidance.md`
+- `references/openai-image-workflow.md`
 - `references/reproducibility-chain.md`
 
 ## Quality Rules
