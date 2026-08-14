@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Portable GPT-image generation/editing fallback for Engineering Figure GPT.
 
-Inside Codex, prefer the built-in image-generation path. This CLI exists for reproducibility,
-local testing, and environments where the built-in image tool is unavailable.
+Connection priority:
+1. explicit CLI overrides;
+2. active Codex provider from ~/.codex/config.toml + ~/.codex/auth.json;
+3. legacy OPENAI_* environment variables/files;
+4. official OpenAI defaults.
 
-Official OpenAI is trusted by default. OpenAI-compatible relay/base URLs are supported only
-with explicit opt-in via --allow-third-party or OPENAI_ALLOW_THIRD_PARTY=1 so credentials are
-never silently sent to an unexpected host.
+This lets command-line Codex users who switch providers with CC Switch reuse the same
+live provider configuration without maintaining a second API configuration for this skill.
 """
 
 from __future__ import annotations
@@ -21,6 +23,12 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from codex_provider_config import load_codex_live_provider
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-image-2"
@@ -43,37 +51,6 @@ def env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def read_key(args: argparse.Namespace) -> str:
-    if getattr(args, "api_key", None):
-        return args.api_key.strip()
-    if os.getenv("OPENAI_API_KEY"):
-        return os.environ["OPENAI_API_KEY"].strip()
-    key_file = getattr(args, "api_key_file", None) or os.getenv("OPENAI_API_KEY_FILE")
-    if key_file:
-        path = Path(key_file).expanduser()
-        if path.is_file():
-            value = path.read_text(encoding="utf-8").strip()
-            if value:
-                return value
-    default = Path.home() / ".codex" / "secrets" / "openai_api_key.txt"
-    if default.is_file():
-        value = default.read_text(encoding="utf-8").strip()
-        if value:
-            return value
-    raise SystemExit("Missing API key. Set OPENAI_API_KEY or OPENAI_API_KEY_FILE.")
-
-
-def read_prompt(args: argparse.Namespace) -> str:
-    if getattr(args, "prompt_file", None):
-        text = Path(args.prompt_file).read_text(encoding="utf-8").strip()
-        if text:
-            return text
-        raise SystemExit("Prompt file is empty.")
-    if getattr(args, "prompt", None) and args.prompt.strip():
-        return args.prompt.strip()
-    raise SystemExit("Provide a prompt or --prompt-file.")
-
-
 def normalized_base_url(value: str) -> str:
     value = (value or "").strip().rstrip("/")
     parsed = urlparse(value)
@@ -87,6 +64,113 @@ def normalized_base_url(value: str) -> str:
 def is_official_base_url(base_url: str) -> bool:
     parsed = urlparse(base_url)
     return parsed.scheme == "https" and (parsed.hostname or "").lower() == OFFICIAL_HOST
+
+
+def resolve_connection(args: argparse.Namespace) -> dict:
+    """Resolve endpoint/key source while preferring the active Codex provider.
+
+    A non-OpenAI endpoint selected by the active Codex config is considered explicitly
+    user-selected/trusted for this process. A custom URL passed separately via --base-url or
+    OPENAI_BASE_URL still requires --allow-third-party / OPENAI_ALLOW_THIRD_PARTY=1.
+    """
+
+    explicit_base = str(getattr(args, "base_url", None) or "").strip()
+    codex_info = None
+    source = "official-default"
+    provider_name = None
+    codex_key = None
+    codex_trusted = False
+
+    if explicit_base:
+        base_url = explicit_base
+        source = "cli"
+    else:
+        no_codex = bool(getattr(args, "no_codex_config", False))
+        if not no_codex:
+            codex_info = load_codex_live_provider(
+                getattr(args, "codex_config", None),
+                getattr(args, "codex_auth", None),
+            )
+        if codex_info and codex_info.get("configured"):
+            base_url = codex_info.get("base_url") or DEFAULT_BASE_URL
+            source = "codex-config"
+            provider_name = codex_info.get("provider_name")
+            codex_key = codex_info.get("api_key")
+            codex_trusted = True
+        elif os.getenv("OPENAI_BASE_URL"):
+            base_url = os.environ["OPENAI_BASE_URL"]
+            source = "environment"
+        else:
+            base_url = DEFAULT_BASE_URL
+
+    args.base_url = normalized_base_url(base_url)
+    args._connection_source = source
+    args._codex_provider = provider_name
+    args._codex_api_key = codex_key
+    args._codex_trusted = codex_trusted
+    args._codex_info = codex_info
+    return {
+        "source": source,
+        "base_url": args.base_url,
+        "codex_provider": provider_name,
+        "codex_trusted": codex_trusted,
+        "has_codex_key": bool(codex_key),
+    }
+
+
+def read_key(args: argparse.Namespace) -> str:
+    if getattr(args, "api_key", None):
+        return args.api_key.strip()
+
+    explicit_key_file = getattr(args, "api_key_file", None)
+    if explicit_key_file:
+        path = Path(explicit_key_file).expanduser()
+        if path.is_file():
+            value = path.read_text(encoding="utf-8").strip()
+            if value:
+                return value
+        raise SystemExit(f"API key file not found or empty: {path}")
+
+    codex_key = str(getattr(args, "_codex_api_key", None) or "").strip()
+    if codex_key:
+        return codex_key
+
+    if os.getenv("OPENAI_API_KEY"):
+        return os.environ["OPENAI_API_KEY"].strip()
+
+    env_key_file = os.getenv("OPENAI_API_KEY_FILE")
+    if env_key_file:
+        path = Path(env_key_file).expanduser()
+        if path.is_file():
+            value = path.read_text(encoding="utf-8").strip()
+            if value:
+                return value
+
+    default = Path.home() / ".codex" / "secrets" / "openai_api_key.txt"
+    if default.is_file():
+        value = default.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+
+    info = getattr(args, "_codex_info", None) or {}
+    if info.get("configured"):
+        raise SystemExit(
+            "The active Codex provider was detected, but no reusable API key was found in "
+            "config.toml/auth.json. Re-enable the provider in CC Switch or configure the "
+            "provider's env_key. Do not paste secrets into prompts."
+        )
+    raise SystemExit("Missing API key. Configure Codex/CC Switch or set OPENAI_API_KEY/OPENAI_API_KEY_FILE.")
+
+
+def read_prompt(args: argparse.Namespace) -> str:
+    if getattr(args, "prompt_file", None):
+        text = Path(args.prompt_file).read_text(encoding="utf-8").strip()
+        if text:
+            return text
+        raise SystemExit("Prompt file is empty.")
+    if getattr(args, "prompt", None) and args.prompt.strip():
+        return args.prompt.strip()
+    raise SystemExit("Provide a prompt or --prompt-file.")
 
 
 def final_quality_requested(args: argparse.Namespace, prompt: str = "") -> bool:
@@ -106,7 +190,7 @@ def resolve_model(args: argparse.Namespace, prompt: str = "") -> tuple[str, bool
         if not highres_model:
             raise SystemExit(
                 "Final/high-resolution output was requested, but OPENAI_IMAGE_HIGHRES_MODEL is not configured. "
-                "Set it to the final-quality model exposed by your official endpoint or trusted relay, or pass --model explicitly. "
+                "Set it to the final-quality image model exposed by the active provider, or pass --model explicitly. "
                 "The skill will not silently downgrade a final-quality request."
             )
         return highres_model, True
@@ -116,11 +200,16 @@ def resolve_model(args: argparse.Namespace, prompt: str = "") -> tuple[str, bool
 def validate_target(args: argparse.Namespace) -> bool:
     args.base_url = normalized_base_url(args.base_url)
     third_party = not is_official_base_url(args.base_url)
-    allow_third_party = bool(getattr(args, "allow_third_party", False)) or env_flag("OPENAI_ALLOW_THIRD_PARTY")
+    allow_third_party = (
+        bool(getattr(args, "allow_third_party", False))
+        or env_flag("OPENAI_ALLOW_THIRD_PARTY")
+        or bool(getattr(args, "_codex_trusted", False))
+    )
     if third_party and not allow_third_party:
         raise SystemExit(
             "Custom/relay base URL detected. Re-run with --allow-third-party or set "
-            "OPENAI_ALLOW_THIRD_PARTY=1 after you trust that endpoint."
+            "OPENAI_ALLOW_THIRD_PARTY=1 after you trust that endpoint. Active Codex/CC Switch "
+            "providers are trusted automatically because the user already selected them there."
         )
     model = str(getattr(args, "model", ""))
     if not model.startswith("gpt-image-"):
@@ -291,6 +380,8 @@ def provider_check(args: argparse.Namespace, third_party: bool) -> int:
     base = args.base_url.rstrip("/")
     result = {
         "profile": "openai-compatible-relay" if third_party else "official-openai",
+        "connection_source": getattr(args, "_connection_source", None),
+        "codex_provider": getattr(args, "_codex_provider", None),
         "base_url": base,
         "model": args.model,
         "models_endpoint": {"status": "not-checked", "http_status": None, "model_advertised": None},
@@ -316,7 +407,12 @@ def provider_check(args: argparse.Namespace, third_party: bool) -> int:
     except requests.Timeout:
         result["models_endpoint"] = {"status": "timeout", "http_status": None, "model_advertised": None}
     except requests.RequestException as exc:
-        result["models_endpoint"] = {"status": "network-error", "http_status": None, "model_advertised": None, "detail": str(exc)[:300]}
+        result["models_endpoint"] = {
+            "status": "network-error",
+            "http_status": None,
+            "model_advertised": None,
+            "detail": str(exc)[:300],
+        }
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
     generation_status = result["generation_endpoint"]["status"]
@@ -332,8 +428,11 @@ def main() -> int:
     parser.add_argument("--prompt-file")
     parser.add_argument("--input-image", action="append", default=[], help="Input image for editing; may be repeated.")
     parser.add_argument("--model", default=None, help="Explicit GPT Image model override.")
-    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL), help="Official OpenAI or explicitly approved OpenAI-compatible relay base URL, usually ending in /v1.")
-    parser.add_argument("--allow-third-party", action="store_true", default=env_flag("OPENAI_ALLOW_THIRD_PARTY"), help="Allow a non-OpenAI relay/base URL. Only enable for an endpoint you trust.")
+    parser.add_argument("--base-url", default=None, help="Explicit endpoint override. Without this flag, the active Codex/CC Switch provider is preferred.")
+    parser.add_argument("--codex-config", help="Optional config.toml override for testing/advanced use.")
+    parser.add_argument("--codex-auth", help="Optional auth.json override for testing/advanced use.")
+    parser.add_argument("--no-codex-config", action="store_true", help="Ignore ~/.codex live provider files and use explicit/env/default connection settings.")
+    parser.add_argument("--allow-third-party", action="store_true", default=env_flag("OPENAI_ALLOW_THIRD_PARTY"), help="Trust a custom URL supplied outside the active Codex config.")
     parser.add_argument("--api-key")
     parser.add_argument("--api-key-file")
     parser.add_argument("--quality", choices=("low", "medium", "high", "auto"), default=os.getenv("OPENAI_IMAGE_QUALITY", "high"))
@@ -347,14 +446,21 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=240)
     parser.add_argument("--highres", action="store_true", help="Use OPENAI_IMAGE_HIGHRES_MODEL and fail closed when it is not configured.")
     parser.add_argument("--final", action="store_true", help="Alias for final-quality/high-resolution routing.")
-    parser.add_argument("--check-provider", action="store_true", help="Probe relay/API compatibility without generating an image. Requires API authentication but does not call image generation.")
-    parser.add_argument("--dry-run", action="store_true", help="Validate arguments without calling the API.")
+    parser.add_argument("--check-provider", action="store_true", help="Probe the resolved provider without generating an image.")
+    parser.add_argument("--dry-run", action="store_true", help="Resolve and validate configuration without calling the API.")
     args = parser.parse_args()
 
     prompt = "" if args.check_provider else read_prompt(args)
+    resolve_connection(args)
     args.model, final_requested = resolve_model(args, prompt)
     third_party = validate_target(args)
-    if third_party:
+
+    if third_party and getattr(args, "_connection_source", None) == "codex-config":
+        print(
+            f"[INFO] Reusing active Codex provider '{getattr(args, '_codex_provider', None)}': {args.base_url}",
+            file=sys.stderr,
+        )
+    elif third_party:
         print(f"[WARN] Using explicitly approved third-party relay: {args.base_url}", file=sys.stderr)
 
     if args.check_provider:
@@ -366,6 +472,8 @@ def main() -> int:
                 {
                     "mode": "edit" if args.input_image else "generate",
                     "model": args.model,
+                    "connection_source": getattr(args, "_connection_source", None),
+                    "codex_provider": getattr(args, "_codex_provider", None),
                     "base_url": args.base_url,
                     "third_party": third_party,
                     "final_quality_requested": final_requested,
