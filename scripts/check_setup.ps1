@@ -13,11 +13,6 @@ function Status([string]$kind, [string]$message) {
     else { Write-Host "[FAIL] $message" -ForegroundColor Red }
 }
 
-function EnvFlagEnabled([string]$value) {
-    if (-not $value) { return $false }
-    return @("1", "true", "yes", "on") -contains $value.Trim().ToLowerInvariant()
-}
-
 Write-Host "Engineering Figure GPT setup check" -ForegroundColor Cyan
 Write-Host "SkillDir   : $SkillDir"
 Write-Host "SecretsDir : $SecretsDir"
@@ -37,6 +32,7 @@ $required = @(
     "agents/openai.yaml",
     "scripts/efg.py",
     "scripts/generate_image.py",
+    "scripts/codex_provider_config.py",
     "scripts/build_engineering_figure_prompt.py",
     "scripts/build_plot_spec.py",
     "scripts/plot_publication_figure.py",
@@ -50,58 +46,87 @@ foreach ($rel in $required) {
 
 $systemImagen = "$HOME/.codex/skills/.system/imagen/SKILL.md"
 if (Test-Path $systemImagen) {
-    Status "PASS" "Codex built-in imagen skill detected; use this as the preferred in-agent image path"
+    Status "PASS" "Codex built-in imagen skill detected"
 } else {
     Status "WARN" "Built-in imagen skill not detected; portable GPT Image CLI fallback can still be used"
     $warned = $true
 }
 
-$baseUrl = if ($env:OPENAI_BASE_URL) { $env:OPENAI_BASE_URL.TrimEnd('/') } else { "https://api.openai.com/v1" }
-$isOfficial = $baseUrl -eq "https://api.openai.com/v1"
-$thirdPartyAllowed = EnvFlagEnabled $env:OPENAI_ALLOW_THIRD_PARTY
+$codexConfig = "$HOME/.codex/config.toml"
+$codexAuth = "$HOME/.codex/auth.json"
+if (Test-Path $codexConfig) { Status "PASS" "Codex live config detected: $codexConfig" }
+else { Status "WARN" "Codex config.toml not found"; $warned = $true }
+if (Test-Path $codexAuth) { Status "PASS" "Codex auth file detected: $codexAuth" }
+else { Status "WARN" "Codex auth.json not found"; $warned = $true }
 
-if ($isOfficial) {
-    Status "PASS" "Image API base URL uses official OpenAI: $baseUrl"
-} elseif ($thirdPartyAllowed) {
-    Status "WARN" "Trusted custom relay enabled: $baseUrl"
-    Write-Host "       The relay can receive the configured API key and images used for edits." -ForegroundColor Yellow
-    Write-Host "       Optional compatibility probe: python scripts/efg.py provider-check" -ForegroundColor Cyan
-    $warned = $true
-} else {
-    Status "WARN" "Custom OPENAI_BASE_URL detected but OPENAI_ALLOW_THIRD_PARTY is not enabled: $baseUrl"
-    Write-Host "       Set OPENAI_ALLOW_THIRD_PARTY=1 only if you trust this relay." -ForegroundColor Yellow
-    $warned = $true
+$providerReady = $false
+$keyReady = $false
+if (Get-Command python -ErrorAction SilentlyContinue -and (Test-Path (Join-Path $SkillDir "scripts/codex_provider_config.py"))) {
+    Push-Location $SkillDir
+    $providerJson = python scripts/codex_provider_config.py 2>$null
+    $providerExit = $LASTEXITCODE
+    Pop-Location
+    if ($providerExit -eq 0 -and $providerJson) {
+        try {
+            $provider = ($providerJson -join "`n") | ConvertFrom-Json
+            if ($provider.configured) {
+                $providerReady = $true
+                Status "PASS" "Active Codex provider: $($provider.provider_name)"
+                if ($provider.base_url) { Write-Host "       Base URL: $($provider.base_url)" -ForegroundColor Cyan }
+                if ($provider.wire_api) { Write-Host "       Wire API: $($provider.wire_api)" -ForegroundColor Cyan }
+                if ($provider.has_api_key) {
+                    Status "PASS" "Reusable Codex/CC Switch API credential detected (secret not displayed)"
+                    $keyReady = $true
+                } else {
+                    Status "WARN" "Active Codex provider found, but no reusable API key was detected in config.toml/auth.json"
+                    $warned = $true
+                }
+                Write-Host "       Image compatibility is separate from Codex text compatibility." -ForegroundColor DarkGray
+                Write-Host "       Optional check: python scripts/efg.py provider-check" -ForegroundColor Cyan
+            }
+        } catch {
+            Status "WARN" "Could not parse sanitized Codex provider diagnostics"
+            $warned = $true
+        }
+    }
+}
+
+if (-not $providerReady) {
+    if ($env:OPENAI_BASE_URL) {
+        Status "WARN" "No active Codex provider was resolved; falling back to OPENAI_BASE_URL=$env:OPENAI_BASE_URL"
+        $warned = $true
+    } else {
+        Status "PASS" "No custom Codex provider resolved; portable fallback defaults to official OpenAI"
+    }
+
+    if ($env:OPENAI_API_KEY) {
+        Status "PASS" "OPENAI_API_KEY is set for fallback"
+        $keyReady = $true
+    } else {
+        $keyFile = if ($env:OPENAI_API_KEY_FILE) { $env:OPENAI_API_KEY_FILE } else { Join-Path $SecretsDir "openai_api_key.txt" }
+        if (Test-Path $keyFile) {
+            $value = (Get-Content -Raw -Path $keyFile).Trim()
+            if ($value -and -not $value.StartsWith("REPLACE_")) {
+                Status "PASS" "Fallback API key file found"
+                $keyReady = $true
+            }
+        }
+    }
 }
 
 $routineModel = if ($env:OPENAI_IMAGE_MODEL) { $env:OPENAI_IMAGE_MODEL } else { "gpt-image-2" }
 Status "PASS" "Routine image model: $routineModel"
 if ($env:OPENAI_IMAGE_HIGHRES_MODEL) {
-    Status "PASS" "Final/high-resolution model configured: $env:OPENAI_IMAGE_HIGHRES_MODEL"
+    Status "PASS" "Final/high-resolution image model configured: $env:OPENAI_IMAGE_HIGHRES_MODEL"
 } else {
     Status "WARN" "OPENAI_IMAGE_HIGHRES_MODEL is not configured"
-    Write-Host "       Routine image generation is available; --final/--highres requests will fail closed until a final-quality model is configured or explicitly passed." -ForegroundColor Yellow
+    Write-Host "       Routine image generation can still work; --final/--highres remains fail-closed." -ForegroundColor Yellow
     $warned = $true
 }
 
-$keyReady = $false
-if ($env:OPENAI_API_KEY) {
-    Status "PASS" "OPENAI_API_KEY is set for CLI fallback"
-    $keyReady = $true
-} else {
-    $keyFile = if ($env:OPENAI_API_KEY_FILE) { $env:OPENAI_API_KEY_FILE } else { Join-Path $SecretsDir "openai_api_key.txt" }
-    if (Test-Path $keyFile) {
-        $value = (Get-Content -Raw -Path $keyFile).Trim()
-        if ($value -and -not $value.StartsWith("REPLACE_")) {
-            Status "PASS" "API key file found for CLI fallback"
-            $keyReady = $true
-        } else {
-            Status "WARN" "API key file is empty or still contains a placeholder"
-            $warned = $true
-        }
-    } else {
-        Status "WARN" "No API key configured; this is okay when Codex built-in image generation is available"
-        $warned = $true
-    }
+if (-not $keyReady) {
+    Status "WARN" "No reusable image API credential detected; Plot Mode and dry runs still work"
+    $warned = $true
 }
 
 if (Get-Command python -ErrorAction SilentlyContinue -and (Test-Path (Join-Path $SkillDir "scripts/efg.py"))) {
@@ -119,8 +144,6 @@ if ($failed) {
 }
 if ($warned) {
     Write-Host "Readiness: READY WITH WARNINGS" -ForegroundColor Yellow
-    if (-not $keyReady) { Write-Host "Image CLI fallback will need an API key; Codex built-in image generation may not." }
-    if ((-not $isOfficial) -and (-not $thirdPartyAllowed)) { Write-Host "Custom relay is configured but will be refused until explicitly trusted." }
     exit 0
 }
 Write-Host "Readiness: READY" -ForegroundColor Green
