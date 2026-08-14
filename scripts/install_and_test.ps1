@@ -24,17 +24,18 @@ if (-not (Test-Path $check)) { throw "Setup check missing after installation: $c
 & $check -SkillDir $target -SecretsDir (Join-Path $CodexHome "secrets")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-# Real local plot E2E smoke test: create a temporary normalized plot spec,
-# render an actual PNG through the installed runtime, verify non-zero bytes,
-# then clean up. This performs no network request and has no API cost.
+# Full local Plot Mode E2E test:
+# concise request -> normalized plot spec -> renderer -> non-empty PNG.
+# This performs no network request and has no API cost.
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("engineering-figure-gpt-smoke-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 try {
+    $requestPath = Join-Path $tempDir "plot-request.json"
     $specPath = Join-Path $tempDir "plot-spec.json"
     $outBase = Join-Path $tempDir "plot-smoke"
     @'
 {
-  "layout": {"rows": 1, "cols": 1, "figsize": [6, 4]},
+  "layout": {"nrows": 1, "ncols": 1, "figsize": [6, 4]},
   "panels": [
     {
       "kind": "bar",
@@ -42,27 +43,35 @@ try {
       "ylabel": "Value",
       "data": {
         "categories": ["A", "B", "C"],
-        "series": [
-          {"label": "Series", "values": [1.0, 1.5, 2.0]}
-        ]
+        "series": {
+          "Series": [1.0, 1.5, 2.0]
+        }
       },
       "annotate": true,
       "legend": false
     }
   ]
 }
-'@ | Set-Content -Encoding UTF8 $specPath
+'@ | Set-Content -Encoding UTF8 $requestPath
 
     Push-Location $target
-    & python scripts/plot_publication_figure.py $specPath --out-path $outBase --formats png
-    $plotExit = $LASTEXITCODE
+    & python scripts/build_plot_spec.py $requestPath --out $specPath
+    $buildExit = $LASTEXITCODE
+    if ($buildExit -eq 0) {
+        & python scripts/plot_publication_figure.py $specPath --out-path $outBase --formats png
+        $plotExit = $LASTEXITCODE
+    } else {
+        $plotExit = 1
+    }
     Pop-Location
-    if ($plotExit -ne 0) { throw "Plot E2E smoke test failed with exit code $plotExit." }
+
+    if ($buildExit -ne 0) { throw "Plot request normalization failed with exit code $buildExit." }
+    if ($plotExit -ne 0) { throw "Plot renderer failed with exit code $plotExit." }
 
     $png = "$outBase.png"
     if (-not (Test-Path $png)) { throw "Plot E2E smoke test did not create $png" }
     if ((Get-Item $png).Length -le 0) { throw "Plot E2E smoke test created an empty PNG." }
-    Write-Host "[PASS] Plot E2E smoke test rendered a non-empty PNG" -ForegroundColor Green
+    Write-Host "[PASS] Plot request -> spec -> renderer E2E produced a non-empty PNG" -ForegroundColor Green
 }
 finally {
     if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
