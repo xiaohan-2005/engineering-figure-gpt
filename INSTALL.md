@@ -20,7 +20,7 @@ The installer:
 
 Repository-only docs, examples, tests, and GitHub workflow files are not copied into the Codex runtime.
 
-## Re-run after updating the repository
+## Re-run after updating
 
 ```powershell
 Set-Location "$HOME/engineering-figure-gpt"
@@ -28,68 +28,101 @@ git pull
 & ".\scripts\install_and_test.ps1" -SkipDependencies
 ```
 
-## Image execution paths
-
-Inside Codex, normal conceptual figure generation should prefer the installed built-in GPT image-generation capability.
-
-For portable/reproducible CLI execution, the runtime also includes:
+## Verify the installed runtime
 
 ```powershell
-python "$HOME/.codex/skills/engineering-figure-gpt/scripts/generate_image.py" `
-  "Create a publication-quality system architecture figure ..." `
-  --quality high `
-  --size 1536x1024
+Get-ChildItem "$HOME/.codex/skills/engineering-figure-gpt" -Filter "SKILL.md"
+& "$HOME/.codex/skills/engineering-figure-gpt/scripts/check_setup.ps1"
 ```
 
-The CLI defaults to `gpt-image-2` and the official OpenAI base URL.
+The runtime should contain both prompt packs:
+
+```text
+assets/prompt-templates/engineering-figure-templates.json
+assets/prompt-templates/mathematical-modeling-templates.json
+```
+
+## Interactive wizard
+
+```powershell
+& "$HOME/.codex/skills/engineering-figure-gpt/scripts/wizard.ps1"
+```
+
+The wizard can:
+
+- list engineering and mathematical-modeling templates;
+- build prompts only;
+- run one-command template → image workflows;
+- select official OpenAI or a trusted relay;
+- probe relay compatibility without generating an image;
+- request final/high-resolution routing;
+- run one-command Plot Request → Spec → Figure workflows.
+
+## Image execution paths
+
+Inside Codex, normal conceptual generation should prefer the built-in GPT image capability.
+
+For portable/reproducible CLI execution:
+
+```powershell
+python "$HOME/.codex/skills/engineering-figure-gpt/scripts/efg.py" image `
+  "A retrieval system with OCR, embeddings, reranking, and answer synthesis" `
+  --figure-template system-architecture `
+  --lang en `
+  --save-prompt output/final-prompt.txt `
+  --dry-run
+```
+
+Remove `--dry-run` only when a live request is intended.
 
 ## Custom OpenAI-compatible relay / 中转站
 
-A custom relay is supported. Because a relay receives the configured API key and, for image-edit requests, uploaded image files, non-OpenAI URLs require explicit opt-in.
+A custom relay is supported. Because a relay receives the configured API key and, for image-edit requests, uploaded images, non-OpenAI URLs require explicit opt-in.
 
 PowerShell environment configuration:
 
 ```powershell
 $env:OPENAI_BASE_URL = "https://relay.example/v1"
 $env:OPENAI_ALLOW_THIRD_PARTY = "1"
+$env:OPENAI_IMAGE_MODEL = "gpt-image-2"
 $env:OPENAI_API_KEY_FILE = "$HOME/.codex/secrets/openai_api_key.txt"
 ```
 
-Then validate the configuration without making a paid request:
+Dry-run configuration check:
 
 ```powershell
-python "$HOME/.codex/skills/engineering-figure-gpt/scripts/generate_image.py" `
+python "$HOME/.codex/skills/engineering-figure-gpt/scripts/efg.py" image `
   "test research figure" `
   --dry-run
 ```
 
-The dry-run output should contain:
+The output should show the selected `base_url`, model, and whether `third_party` is true.
 
-```text
-"third_party": true
-```
+### Relay compatibility probe
 
-You can also configure the relay per command instead of using environment variables:
+Before a paid image generation request, run:
 
 ```powershell
-python "$HOME/.codex/skills/engineering-figure-gpt/scripts/generate_image.py" `
-  "Create a publication-quality system architecture figure ..." `
+python "$HOME/.codex/skills/engineering-figure-gpt/scripts/efg.py" provider-check `
   --base-url "https://relay.example/v1" `
   --allow-third-party
 ```
 
-The configured base URL should expose OpenAI-compatible routes such as:
+The probe does **not** generate an image. It checks basic reachability signals for:
 
 ```text
-POST <base-url>/images/generations
-POST <base-url>/images/edits
+GET     <base-url>/models
+OPTIONS <base-url>/images/generations
+OPTIONS <base-url>/images/edits
 ```
+
+A successful probe is useful evidence that the relay follows the expected API shape, but it cannot guarantee that every OpenAI Images parameter is implemented identically.
 
 Do not enable `OPENAI_ALLOW_THIRD_PARTY=1` for a service you do not trust. Credentials embedded directly in the URL are rejected.
 
-## API key for the CLI fallback
+## API key
 
-The fallback accepts one of:
+The portable image path accepts one of:
 
 ```text
 OPENAI_API_KEY
@@ -97,38 +130,90 @@ OPENAI_API_KEY_FILE
 ~/.codex/secrets/openai_api_key.txt
 ```
 
-The key only needs to be valid for the selected endpoint. Do not commit a real API key to this repository.
+The key only needs to be valid for the selected endpoint. Do not commit a real key to this repository.
+
+## Final / high-resolution routing
+
+Routine requests use:
+
+```text
+OPENAI_IMAGE_MODEL
+```
+
+and otherwise default to `gpt-image-2`.
+
+Final/high-resolution requests use:
+
+```text
+OPENAI_IMAGE_HIGHRES_MODEL
+```
+
+or an explicit `--model`.
+
+Example:
+
+```powershell
+$env:OPENAI_IMAGE_HIGHRES_MODEL = "<final-quality-model-exposed-by-your-endpoint>"
+
+python "$HOME/.codex/skills/engineering-figure-gpt/scripts/efg.py" image `
+  "technical background" `
+  --figure-template graphical-abstract `
+  --final
+```
+
+If `--final` / `--highres` is requested and no final-quality model is configured, the CLI stops instead of silently downgrading. See `references/highres-policy.md`.
+
+## One-command exact plotting
+
+The preferred user-facing route is:
+
+```powershell
+python "$HOME/.codex/skills/engineering-figure-gpt/scripts/efg.py" plot request.json `
+  --spec-out output/spec.json `
+  --out-path output/figure `
+  --formats png pdf svg
+```
+
+This runs:
+
+```text
+Plot Request
+    ↓
+build_plot_spec.py
+    ↓
+Normalized Plot Spec
+    ↓
+plot_publication_figure.py
+    ↓
+Figure
+```
+
+If you already have a normalized spec:
+
+```powershell
+python "$HOME/.codex/skills/engineering-figure-gpt/scripts/efg.py" render output/spec.json `
+  --out-path output/figure `
+  --formats png pdf svg
+```
 
 ## Optional live GPT Image test
 
-A real GPT Image request is **not** part of the default install test because it performs a paid network request. To explicitly test the configured image endpoint once:
+A real image request is **not** part of the default install test because it performs a paid network request.
+
+To explicitly test the configured image endpoint once:
 
 ```powershell
 & "$HOME/engineering-figure-gpt/scripts/install_and_test.ps1" -SkipDependencies -TestLiveImage
 ```
 
-If a relay is configured, set `OPENAI_BASE_URL` and `OPENAI_ALLOW_THIRD_PARTY=1` first. The live test uses the installed runtime and deletes its temporary output after verifying that a non-empty image file was produced.
+If a relay is configured, set `OPENAI_BASE_URL` and `OPENAI_ALLOW_THIRD_PARTY=1` first. The live test deletes its temporary output after confirming that a non-empty image file was produced.
 
-## Setup diagnostics
+## Setup diagnostics outcomes
 
-You can run the installed checker directly:
+`check_setup.ps1` can report:
 
-```powershell
-& "$HOME/.codex/skills/engineering-figure-gpt/scripts/check_setup.ps1"
-```
-
-The checker reports whether the image path uses official OpenAI, an explicitly trusted relay, or a custom URL that has not yet been approved.
-
-Possible outcomes:
-
-- `READY`: required runtime components are present and no warnings were found.
-- `READY WITH WARNINGS`: the core runtime is usable, but an optional image path, relay trust setting, or API-key fallback is not fully configured.
+- `READY`: required runtime components are present and no warnings were found;
+- `READY WITH WARNINGS`: the core runtime is usable, but an optional image path, relay trust setting, final-quality model, or API-key fallback is not fully configured;
 - `BLOCKED`: a required runtime component is missing or the offline smoke check failed.
 
-## Verify Codex can see the skill
-
-```powershell
-Get-ChildItem "$HOME/.codex/skills/engineering-figure-gpt" -Filter "SKILL.md"
-```
-
-Then start a new Codex session or restart Codex if necessary.
+After installation, start a new Codex session or restart Codex if necessary.
