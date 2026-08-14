@@ -11,7 +11,6 @@ The user-facing CLI keeps intermediate JSON and prompt files optional:
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 import tempfile
@@ -34,7 +33,12 @@ def add_image_runtime_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--quality", choices=("low", "medium", "high", "auto"))
     parser.add_argument("--size")
     parser.add_argument("--output-format", choices=("png", "jpeg", "webp"))
-    parser.add_argument("--background", choices=("transparent", "opaque", "auto"))
+    parser.add_argument(
+        "--background",
+        dest="image_background",
+        choices=("transparent", "opaque", "auto"),
+        help="Image canvas background setting forwarded to the Images API; distinct from the scientific background text.",
+    )
     parser.add_argument("--input-fidelity", choices=("low", "high"))
     parser.add_argument("--n", type=int)
     parser.add_argument("--out-dir")
@@ -47,10 +51,8 @@ def add_image_runtime_options(parser: argparse.ArgumentParser) -> None:
 
 def image_runtime_args(args: argparse.Namespace) -> list[str]:
     parts: list[str] = []
-    repeat = (("input_image", "--input-image"),)
-    for attr, flag in repeat:
-        for value in getattr(args, attr, []) or []:
-            parts += [flag, str(value)]
+    for value in getattr(args, "input_image", []) or []:
+        parts += ["--input-image", str(value)]
 
     scalar = (
         ("model", "--model"),
@@ -59,7 +61,7 @@ def image_runtime_args(args: argparse.Namespace) -> list[str]:
         ("quality", "--quality"),
         ("size", "--size"),
         ("output_format", "--output-format"),
-        ("background", "--background"),
+        ("image_background", "--background"),
         ("input_fidelity", "--input-fidelity"),
         ("n", "--n"),
         ("out_dir", "--out-dir"),
@@ -101,7 +103,6 @@ def cmd_image(args: argparse.Namespace) -> int:
     generator = str(SCRIPTS / "generate_image.py")
     runtime = image_runtime_args(args)
 
-    # Raw prompt mode: no template, just forward the supplied prompt/file.
     if not args.figure_template:
         if args.background_file:
             return run([generator, "--prompt-file", args.background_file, *runtime])
@@ -110,7 +111,6 @@ def cmd_image(args: argparse.Namespace) -> int:
             return 2
         return run([generator, args.background, *runtime])
 
-    # Template mode: build the final prompt first, then immediately generate/edit.
     if not args.background and not args.background_file:
         print("Template image mode requires background text or --background-file.", file=sys.stderr)
         return 2
@@ -199,6 +199,7 @@ def cmd_check(_: argparse.Namespace) -> int:
     required = [
         "SKILL.md",
         "assets/prompt-templates/engineering-figure-templates.json",
+        "assets/prompt-templates/mathematical-modeling-templates.json",
         "scripts/build_engineering_figure_prompt.py",
         "scripts/build_plot_spec.py",
         "scripts/plot_publication_figure.py",
