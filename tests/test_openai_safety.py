@@ -75,6 +75,41 @@ def test_non_gpt_image_model_is_rejected():
         module.validate_target(args_for("https://api.openai.com/v1", model="other-model"))
 
 
+def test_default_model_resolution_is_gpt_image_2(monkeypatch):
+    module = load_module()
+    monkeypatch.delenv("OPENAI_IMAGE_MODEL", raising=False)
+    args = argparse.Namespace(model=None, highres=False, final=False)
+    model, final_requested = module.resolve_model(args, "routine paper figure")
+    assert model == "gpt-image-2"
+    assert final_requested is False
+
+
+def test_highres_request_fails_closed_without_config(monkeypatch):
+    module = load_module()
+    monkeypatch.delenv("OPENAI_IMAGE_HIGHRES_MODEL", raising=False)
+    args = argparse.Namespace(model=None, highres=True, final=False)
+    with pytest.raises(SystemExit, match="OPENAI_IMAGE_HIGHRES_MODEL"):
+        module.resolve_model(args, "final figure")
+
+
+def test_highres_request_uses_configured_model(monkeypatch):
+    module = load_module()
+    monkeypatch.setenv("OPENAI_IMAGE_HIGHRES_MODEL", "gpt-image-2-final")
+    args = argparse.Namespace(model=None, highres=True, final=False)
+    model, final_requested = module.resolve_model(args, "final figure")
+    assert model == "gpt-image-2-final"
+    assert final_requested is True
+
+
+def test_explicit_model_can_satisfy_final_request(monkeypatch):
+    module = load_module()
+    monkeypatch.delenv("OPENAI_IMAGE_HIGHRES_MODEL", raising=False)
+    args = argparse.Namespace(model="gpt-image-2-custom", highres=False, final=True)
+    model, final_requested = module.resolve_model(args, "final figure")
+    assert model == "gpt-image-2-custom"
+    assert final_requested is True
+
+
 def test_dry_run_does_not_require_api_key():
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
@@ -90,6 +125,7 @@ def test_dry_run_does_not_require_api_key():
     assert '"model": "gpt-image-2"' in result.stdout
     assert '"mode": "generate"' in result.stdout
     assert '"third_party": false' in result.stdout
+    assert '"final_quality_requested": false' in result.stdout
 
 
 def test_relay_dry_run_works_with_environment_opt_in():
