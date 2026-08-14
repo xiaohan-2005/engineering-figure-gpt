@@ -9,7 +9,11 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TEMPLATE_PATH = ROOT / "assets" / "prompt-templates" / "engineering-figure-templates.json"
+TEMPLATE_DIR = ROOT / "assets" / "prompt-templates"
+TEMPLATE_PATHS = (
+    TEMPLATE_DIR / "engineering-figure-templates.json",
+    TEMPLATE_DIR / "mathematical-modeling-templates.json",
+)
 
 
 def contains_chinese(text: str) -> bool:
@@ -17,7 +21,18 @@ def contains_chinese(text: str) -> bool:
 
 
 def load_templates() -> dict:
-    return json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
+    merged: dict = {}
+    for path in TEMPLATE_PATHS:
+        if not path.is_file():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        collisions = sorted(set(merged).intersection(data))
+        if collisions:
+            raise SystemExit(f"Duplicate figure template keys across domain packs: {collisions}")
+        merged.update(data)
+    if not merged:
+        raise SystemExit(f"No prompt template packs found in {TEMPLATE_DIR}")
+    return merged
 
 
 def build_prompt(template_name: str, background: str, lang: str | None, style_note: str | None) -> str:
@@ -33,14 +48,21 @@ def build_prompt(template_name: str, background: str, lang: str | None, style_no
 
 
 def main() -> int:
+    templates = load_templates()
     parser = argparse.ArgumentParser(description="Build an Engineering Figure GPT prompt.")
     parser.add_argument("background", nargs="?", help="Paper or technical background.")
     parser.add_argument("--background-file", help="Read paper or technical background from a UTF-8 file.")
-    parser.add_argument("--figure-template", required=True, choices=tuple(load_templates().keys()))
+    parser.add_argument("--figure-template", required=True, choices=tuple(sorted(templates.keys())))
     parser.add_argument("--lang", choices=("en", "zh"), default=None)
     parser.add_argument("--style-note")
     parser.add_argument("--out", help="Optional prompt output path.")
+    parser.add_argument("--list-templates", action="store_true", help="Print all available template keys and exit.")
     args = parser.parse_args()
+
+    if args.list_templates:
+        for name in sorted(templates):
+            print(name)
+        return 0
 
     background = args.background
     if args.background_file:
