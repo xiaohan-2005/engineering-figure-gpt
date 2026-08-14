@@ -1,0 +1,62 @@
+{
+  "problem-analysis": {
+    "en": "Create a publication-quality mathematical-modeling problem-analysis diagram. Decompose the problem into goals, known information, unknown quantities, assumptions, constraints, data needs, and subproblem dependencies. Make the reasoning structure explicit without pretending that the model has already been solved. Preserve all supplied variable names and task wording. Use a white background, compact academic hierarchy, concise labels, and clear directional relationships. Do not invent data, formulas, constraints, or conclusions. Modeling Background:\n{background}",
+    "zh": "创建论文级数学建模问题分析图。将赛题或研究问题拆分为目标、已知信息、待求量、关键假设、约束条件、数据需求以及子问题之间的依赖关系，清楚表达分析逻辑，但不要把尚未完成的推导包装成既定结论。严格保留题目中的变量、任务表述和条件。采用白底、紧凑学术层级、简短标签和明确方向关系。不得虚构数据、公式、约束或结论。建模背景：\n{background}"
+  },
+  "q1-q2-q3-dependency": {
+    "en": "Create a publication-quality Q1/Q2/Q3 dependency map for a mathematical-modeling paper. Show what each subproblem consumes, what it produces, and how outputs or parameters are passed to later subproblems. Distinguish shared preprocessing from problem-specific modeling. Preserve the exact subproblem names and do not imply a dependency that is not supported. Use a white background, strong left-to-right reading order, and concise labels. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级 Q1/Q2/Q3 子问题依赖图。明确每个子问题的输入、核心任务、输出以及输出参数如何传递给后续问题，并区分公共数据预处理与各子问题专属建模步骤。必须保留原始问题名称，不得为了让结构更完整而虚构不存在的依赖。采用白底、清晰从左到右阅读顺序和简洁标签。建模背景：\n{background}"
+  },
+  "data-preprocessing": {
+    "en": "Create a publication-quality data-preprocessing workflow for a mathematical-modeling paper. Show source acquisition, field selection, unit alignment, missing-value handling, outlier treatment, denoising, normalization or standardization, feature construction, and the validated modeling dataset only when supported by the background. Distinguish data artifacts from processing steps. Do not invent preprocessing operations or thresholds. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级数据预处理流程图。根据背景展示数据来源、字段筛选、单位统一、缺失值处理、异常值处理、去噪、归一化或标准化、特征构建以及最终用于建模的数据集，并区分数据对象与处理步骤。只有原始材料中真实存在的操作才能出现，不得虚构处理方法、阈值或数据规模。建模背景：\n{background}"
+  },
+  "forecasting-workflow": {
+    "en": "Create a publication-quality forecasting workflow. Separate exploratory analysis, trend/seasonality diagnostics, feature construction, train-validation split, model fitting, parameter selection, rolling or holdout validation, error evaluation, forecasting, and uncertainty analysis when supported. Preserve model names, horizons, variables, and metrics. Exact forecast curves and numbers belong in local plots, not generated conceptually. Modeling Background:\n{background}",
+    "zh": "创建论文级预测建模流程图。根据背景区分探索性分析、趋势与周期诊断、特征构建、训练验证划分、模型拟合、参数选择、滚动或留出验证、误差评价、预测输出与不确定性分析。严格保留模型名称、预测期、变量和评价指标。精确预测曲线与数值应由本地绘图产生，不由概念图模型虚构。建模背景：\n{background}"
+  },
+  "classification-workflow": {
+    "en": "Create a publication-quality classification modeling workflow. Show labeled-data preparation, feature construction, class imbalance handling if present, model training, hyperparameter selection, validation, confusion-matrix or metric evaluation, interpretation, and final classification output. Keep exact metric values out of the conceptual diagram. Do not invent labels, models, balancing methods, or performance claims. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级分类任务流程图。展示标签数据准备、特征构建、若存在则处理类别不平衡、模型训练、超参数选择、验证、混淆矩阵或指标评价、解释以及最终分类结果。概念流程中不生成精确指标值。不得虚构类别标签、模型、采样方法或性能结论。建模背景：\n{background}"
+  },
+  "clustering-workflow": {
+    "en": "Create a publication-quality clustering workflow. Show variable selection, scaling, distance or similarity definition, clustering algorithm, cluster-number or parameter selection, internal/external validation when applicable, profile interpretation, and downstream use. Preserve the supplied method names and cluster semantics. Do not fabricate cluster counts or silhouette values. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级聚类分析流程图。展示变量选择、尺度处理、距离或相似度定义、聚类算法、聚类数或参数选择、适用时的内部或外部评价、类别画像解释以及后续应用。严格保留用户提供的方法名称和类别含义，不得虚构聚类数、轮廓系数或解释结论。建模背景：\n{background}"
+  },
+  "optimization-model": {
+    "en": "Create a publication-quality optimization-model formulation diagram. Separate decision variables, parameters, objective functions, hard constraints, soft constraints or penalties, feasible region, solver input, and decision output. Exact mathematical expressions should remain placeholders for later typesetting if image-generation accuracy is uncertain. Do not invent objectives, variables, or constraints. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级优化模型构建图。明确区分决策变量、参数、目标函数、硬约束、软约束或惩罚项、可行域、求解器输入与最终决策输出。对必须完全准确的数学表达式，应保留为后期公式排版占位，不允许图像模型自行改写。不得虚构目标、变量或约束。建模背景：\n{background}"
+  },
+  "multi-objective-pareto": {
+    "en": "Create a publication-quality multi-objective optimization and Pareto workflow. Show multiple objectives, shared constraints, candidate-solution generation, non-dominated sorting or equivalent selection, Pareto-front construction, trade-off analysis, preference or weighting stage when actually used, and final solution selection. Never fabricate Pareto points or optimal values. Modeling Background:\n{background}",
+    "zh": "创建论文级多目标优化与 Pareto 决策流程图。展示多个目标、共享约束、候选解生成、非支配排序或对应筛选机制、Pareto 前沿构建、权衡分析、确实存在时的偏好或权重处理以及最终方案选择。不得虚构 Pareto 点、最优值或权重结论。建模背景：\n{background}"
+  },
+  "spatial-model": {
+    "en": "Create a publication-quality spatial-modeling framework. Show spatial units or coordinates, geographic preprocessing, adjacency/distance construction, spatial features, model or optimization stage, spatial validation, and mapped decision output when supported. Distinguish actual measured geography from conceptual flow. Do not invent coordinates, distances, regions, or spatial effects. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级空间建模框架图。根据背景展示空间单元或坐标、地理预处理、邻接或距离关系构建、空间特征、模型或优化步骤、空间验证以及地图化决策输出。必须区分真实测量的地理关系与概念流程，不得虚构坐标、距离、区域或空间效应。建模背景：\n{background}"
+  },
+  "network-model": {
+    "en": "Create a publication-quality network-modeling workflow. Show nodes, edges, weights or capacities, network construction, graph metrics or constraints, algorithmic analysis or optimization, robustness checks, and resulting decisions only when supported. Preserve supplied graph terminology and do not invent topology or edge weights. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级网络模型流程图。展示节点、边、权重或容量、网络构建、图指标或约束、算法分析或优化、稳健性检查以及最终决策，仅保留背景中有依据的关系。严格保留图论术语，不得虚构网络拓扑、边权或容量。建模背景：\n{background}"
+  },
+  "evaluation-system": {
+    "en": "Create a publication-quality evaluation-system framework. Show indicator hierarchy, preprocessing or normalization, objective/subjective weighting if actually used, aggregation model, consistency or robustness check, ranking/scoring output, and interpretation. Keep exact weights and scores out of image generation unless they are supplied and later typeset exactly. Do not invent indicators or weights. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级综合评价体系图。展示指标层级、数据预处理或标准化、确实使用时的客观或主观赋权、综合评价模型、一致性或稳健性检验、排序或评分输出以及结果解释。精确权重和得分若需要展示，应由确定性排版完成，不允许图像模型自行生成。不得虚构指标或权重。建模背景：\n{background}"
+  },
+  "sensitivity-analysis": {
+    "en": "Create a publication-quality sensitivity-analysis framework. Show baseline parameters, perturbation strategy, one-at-a-time or global sensitivity method, model reruns, output changes, sensitivity index calculation when supported, ranking of influential factors, and implications for model reliability. Exact sensitivity values and curves belong in local plots. Do not invent parameter ranges or sensitivity results. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级敏感性分析框架图。展示基准参数、扰动策略、单因素或全局敏感性方法、模型重复求解、输出变化、存在依据时的敏感性指标计算、关键影响因素排序以及对模型可靠性的解释。精确敏感性数值和曲线应由本地绘图生成，不得虚构参数范围或分析结果。建模背景：\n{background}"
+  },
+  "robustness-analysis": {
+    "en": "Create a publication-quality robustness-analysis workflow. Show baseline scenario, uncertainty/noise/scenario perturbations, repeated model execution, constraint or performance checks, comparison against the baseline, failure-region identification when supported, and robustness conclusion. Keep exact numeric deviations in local plots. Do not invent disturbance levels or robustness claims. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级稳健性分析流程图。展示基准场景、不确定性或噪声或情景扰动、模型重复运行、约束或性能检查、与基准结果比较、存在依据时的失效区域识别以及稳健性结论。精确数值偏差应由本地绘图生成，不得虚构扰动幅度或稳健性结论。建模背景：\n{background}"
+  },
+  "decision-framework": {
+    "en": "Create a publication-quality decision framework that converts validated model outputs into actionable alternatives. Show model outputs, constraints, evaluation criteria, scenario comparison, preference or policy layer when actually present, candidate ranking, and final recommendation. Separate model evidence from human preference. Do not fabricate scores, priorities, or recommendations. Modeling Background:\n{background}",
+    "zh": "创建数学建模论文级决策框架图，将已经验证的模型输出转化为可执行方案。展示模型结果、约束条件、评价准则、情景比较、确实存在时的偏好或政策层、候选方案排序以及最终建议，并明确区分模型证据与人为偏好。不得虚构评分、优先级或推荐结论。建模背景：\n{background}"
+  },
+  "full-modeling-pipeline": {
+    "en": "Create a publication-quality end-to-end mathematical-modeling pipeline. Show problem understanding, assumptions, data preparation, exploratory analysis, submodel construction, parameter estimation, prediction/optimization/evaluation branches as actually used, validation, sensitivity and robustness checks, and decision output. Make subproblem handoffs explicit and keep exact formulas/numbers source-faithful. Use a white background and competition-paper readability. Do not invent methods or results. Modeling Background:\n{background}",
+    "zh": "创建端到端数学建模论文总体流程图。根据背景完整展示问题理解、模型假设、数据准备、探索分析、子模型构建、参数估计、实际使用的预测或优化或评价分支、模型检验、敏感性与稳健性检查以及决策输出，并明确各子问题之间的信息传递。公式和数值必须忠实于来源。采用白底和数学建模竞赛论文式可读层级。不得虚构方法或结果。建模背景：\n{background}"
+  }
+}
