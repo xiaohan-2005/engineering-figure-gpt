@@ -1,52 +1,82 @@
 # Showcase
 
-Engineering Figure GPT separates conceptual composition from exact quantitative rendering.
+Engineering Figure GPT separates **real reproducible evidence** from **conceptual layout previews**.
 
-## 1. Mathematical modeling framework
+## Reproducible exact outputs
 
-![Mathematical modeling framework](showcase/model-framework.svg)
+These examples preserve the full Plot Request → normalized Plot Spec → vector output → verification chain. Their values are synthetic and illustrative, not scientific claims.
+
+### Exact benchmark comparison
+
+![Exact benchmark comparison](examples/benchmark-exact/output.svg)
+
+**Mode:** `plot`  
+**Evidence:** [brief](examples/benchmark-exact/brief.md) · [request](examples/benchmark-exact/request.json) · [plot spec](examples/benchmark-exact/plot-spec.json) · [verification](examples/benchmark-exact/verification.md)
+
+### Sensitivity / robustness analysis
+
+![Sensitivity and robustness analysis](examples/sensitivity-robustness/output.svg)
+
+**Mode:** `plot`  
+**Evidence:** [brief](examples/sensitivity-robustness/brief.md) · [request](examples/sensitivity-robustness/request.json) · [plot spec](examples/sensitivity-robustness/plot-spec.json) · [verification](examples/sensitivity-robustness/verification.md)
+
+The numeric semantics of these cases are deterministic. Re-rendering with a different Matplotlib version may change SVG coordinates or metadata, but it must not alter the preserved values.
+
+---
+
+## Conceptual capability previews
+
+The following SVGs are **layout previews only**. They are deliberately kept separate from the reproducible examples above and are not claims that a particular GPT run produced them.
+
+### Mathematical modeling framework
+
+![Mathematical modeling framework preview](showcase/model-framework.svg)
 
 **Mode:** `image`  
 **Goal:** summarize a modeling paper from problem definition through validation and decision output.  
-**Reproducible brief:** `examples/mathematical-model-framework.md`
+**Source brief:** `../examples/mathematical-model-framework.md`
 
-## 2. AI system architecture
+### AI system architecture
 
-![System architecture](showcase/system-architecture.svg)
+![System architecture preview](showcase/system-architecture.svg)
 
 **Mode:** `image`  
 **Suggested structure:** source data → preprocessing → core model → output layer.
 
-## 3. Algorithm workflow
+### Algorithm workflow
 
-![Algorithm workflow](showcase/algorithm-workflow.svg)
+![Algorithm workflow preview](showcase/algorithm-workflow.svg)
 
 **Mode:** `image`  
 **Suggested structure:** input → preprocessing → inference / optimization → validation → output, with explicit loops and stop conditions when needed.  
-**Reproducible brief:** `examples/algorithm-workflow.md`
+**Source brief:** `../examples/algorithm-workflow.md`
 
-## 4. Data-analysis pipeline
+### Data-analysis pipeline
 
-![Data pipeline](showcase/data-pipeline.svg)
+![Data pipeline preview](showcase/data-pipeline.svg)
 
 **Mode:** `image` or `mixed`  
 **Suggested structure:** acquisition → cleaning → modeling → evaluation → interpretation.
 
-## 5. Multi-objective optimization workflow
+### Multi-objective optimization workflow
 
-![Optimization workflow](showcase/optimization.svg)
+![Optimization workflow preview](showcase/optimization.svg)
 
 **Mode:** `image`  
 **Suggested structure:** objectives + constraints → search / solver → Pareto set → final decision.
 
-## 6. Benchmark plot
+## Real conceptual-output milestone
 
-![Benchmark plot](showcase/benchmark-plot.svg)
+A conceptual example moves out of "preview" status only after the repository contains:
 
-**Mode:** `plot`  
-**Rule:** exact values, axes and geometry remain local and deterministic. The values in this preview are illustrative.  
-**Reproducible request:** `examples/benchmark-plot-request.json`
+```text
+brief.md
+prompt.txt
+output.png
+verification.md
+manifest.json
+```
 
----
+If later manual editing is expected, also preserve `editable-handoff.md`.
 
-The conceptual SVGs in this gallery are **layout previews**, not claims that a particular GPT image run produced them. In Codex, conceptual panels should be generated through the installed GPT image-generation path, while quantitative panels remain exact local plots.
+The final remaining showcase milestone is therefore **real GPT conceptual output**, not more hand-drawn SVG previews.
