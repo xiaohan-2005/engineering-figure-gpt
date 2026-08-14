@@ -38,6 +38,43 @@ A completed conceptual example must use:
 
 Do not create the completed `manifest.json` until the real output artifact exists.
 
+## Package a real output safely
+
+After a real GPT run or exact render has produced its final file, use the repository packaging tool instead of manually copying evidence files:
+
+```bash
+python scripts/package_showcase_example.py \
+  --slug rag-system-architecture \
+  --mode image \
+  --brief work/rag-brief.md \
+  --source output/final-prompt.txt=prompt.txt \
+  --output output/rag-figure.png \
+  --verification work/rag-verification.md \
+  --model gpt-image-2 \
+  --quality high \
+  --size 1536x1024 \
+  --check "labels checked" \
+  --check "arrow directions checked"
+```
+
+For an exact plot:
+
+```bash
+python scripts/package_showcase_example.py \
+  --slug my-benchmark \
+  --mode plot \
+  --brief work/brief.md \
+  --source output/request.json=request.json \
+  --source output/spec.json=plot-spec.json \
+  --output output/figure.svg \
+  --verification work/verification.md \
+  --check "source values preserved"
+```
+
+The packaging tool refuses to create a completed manifest when required evidence is missing, the output is empty, or PNG/JPEG/WebP/SVG/PDF file signatures do not match the declared extension. It also requires `prompt.txt` for image cases and both `request.json` + `plot-spec.json` for plot cases.
+
+The packaging tool is repository maintenance tooling and is intentionally **not copied into the pruned Codex runtime**.
+
 ## Quantitative example contract
 
 ```text
@@ -59,5 +96,6 @@ Do not create the completed `manifest.json` until the real output artifact exist
 5. Verification notes must record label, arrow, formula, Chinese-text, value, axis, legend, and uncertainty checks as relevant.
 6. Exact numeric geometry must remain deterministic and must not be redrawn by the image model.
 7. API keys, relay credentials, and other secrets must never be stored here.
+8. Completed manifests must resolve to real non-empty artifacts and pass CI validation.
 
 The older SVG files under `docs/showcase/` remain explicitly labeled layout previews. They should be removed from the main gallery only after real conceptual GPT outputs satisfy the contract above.
