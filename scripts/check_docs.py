@@ -52,14 +52,20 @@ def clean_target(raw: str) -> str | None:
     parsed = urlparse(target)
     if parsed.scheme.lower() in EXTERNAL_SCHEMES or target.startswith("//"):
         return None
-    path = unquote(parsed.path)
-    return path or None
+    return unquote(parsed.path) or None
 
 
 def resolve_local(source: Path, target: str) -> Path:
     if target.startswith("/"):
         return ROOT / target.lstrip("/")
     return source.parent / target
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(ROOT.resolve()))
+    except ValueError:
+        return str(path)
 
 
 def find_local_targets(text: str) -> list[str]:
@@ -83,7 +89,7 @@ def main() -> int:
             resolved = resolve_local(source, target)
             if not resolved.exists():
                 failures.append(
-                    f"{source.relative_to(ROOT)}: broken local link/image '{raw}' -> {resolved.relative_to(ROOT) if resolved.is_relative_to(ROOT) else resolved}"
+                    f"{source.relative_to(ROOT)}: broken local link/image '{raw}' -> {display_path(resolved)}"
                 )
 
     if failures:
