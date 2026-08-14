@@ -1,6 +1,6 @@
 ---
 name: engineering-figure-gpt
-description: Use when the user needs publication-style engineering, computer-science, data-science, AI, electronics, or mathematical-modeling figures. Prefer this skill for system architectures, algorithm workflows, graphical abstracts, modeling frameworks, benchmark/ablation/sensitivity plots, figure redraws, and image edits. Use Codex built-in GPT image generation for conceptual figures when available, a GPT Image-compatible CLI with official OpenAI or explicitly approved relay URLs for reproducibility, and local plotting for exact quantitative figures.
+description: Use when the user needs publication-style engineering, computer-science, data-science, AI, electronics, or mathematical-modeling figures. Prefer this skill for system architectures, algorithm workflows, graphical abstracts, modeling frameworks, benchmark/ablation/sensitivity plots, figure redraws, and image edits. Use Codex built-in GPT image generation for conceptual figures when available, or the bundled GPT Image-compatible CLI which can reuse the active Codex/CC Switch provider; keep exact quantitative figures local and deterministic.
 ---
 
 # Engineering Figure GPT
@@ -21,16 +21,17 @@ Never use image generation for exact numeric geometry, axes, uncertainty bars, b
 2. Structure the task with `references/figure-brief-spec.md` when needed.
 3. Choose `image`, `plot`, or `mixed`.
 4. For conceptual figures, choose the closest template from the engineering or mathematical-modeling prompt packs.
-5. Inside Codex, prefer the built-in image-generation capability for normal conceptual work.
-6. For a portable/reproducible image path, use `scripts/efg.py image` or `scripts/generate_image.py`.
-7. Official OpenAI works by default. A custom OpenAI-compatible relay requires explicit trust via `--allow-third-party` or `OPENAI_ALLOW_THIRD_PARTY=1`.
-8. If relay compatibility is uncertain, use `scripts/efg.py provider-check` before spending image credits.
-9. For final/high-resolution intent, follow `references/highres-policy.md`; never silently downgrade model/quality/provider.
-10. For exact plots, treat natural language as the user interface and JSON as internal execution data.
-11. Prefer the one-command plot path `scripts/efg.py plot request.json`; use `render` only for an already normalized spec.
-12. In mixed mode, render quantitative panels first and never ask the image model to redraw them.
-13. Verify labels, units, reading order, legends, values, axes, uncertainty, and scientific fidelity.
-14. For reusable/showcase work, preserve the evidence chain from `references/reproducibility-chain.md` and use editable handoff when appropriate.
+5. Inside Codex, use the installed image-generation path when it is available and appropriate.
+6. For a portable/reproducible path, use `scripts/efg.py image` or `scripts/generate_image.py`.
+7. When Codex is launched from the command line and its provider is managed by CC Switch, the portable image path should reuse the active `~/.codex/config.toml` + `~/.codex/auth.json` provider automatically. Read `references/codex-cc-switch.md` when provider behavior matters.
+8. A non-OpenAI endpoint selected by the active Codex provider is already user-selected and does not require a second trust flag. A custom URL supplied independently through `--base-url` or `OPENAI_BASE_URL` still requires `--allow-third-party` or `OPENAI_ALLOW_THIRD_PARTY=1`.
+9. If image compatibility is uncertain, use `scripts/efg.py provider-check` before spending image credits. A provider that works for Codex text requests may still lack `/images/generations`.
+10. For final/high-resolution intent, follow `references/highres-policy.md`; never silently downgrade model/quality/provider.
+11. For exact plots, treat natural language as the user interface and JSON as internal execution data.
+12. Prefer the one-command plot path `scripts/efg.py plot request.json`; use `render` only for an already normalized spec.
+13. In mixed mode, render quantitative panels first and never ask the image model to redraw them.
+14. Verify labels, units, reading order, legends, values, axes, uncertainty, and scientific fidelity.
+15. For reusable/showcase work, preserve the evidence chain from `references/reproducibility-chain.md` and use editable handoff when appropriate.
 
 ## Prompt template packs
 
@@ -91,7 +92,39 @@ python scripts/efg.py image \
 
 Remove `--dry-run` only when a live request is intended.
 
-### Trusted relay
+### Command-line Codex + CC Switch
+
+If the user starts Codex from the command line and CC Switch already selected the Codex API provider, do **not** ask the user to duplicate the same Base URL and key in environment variables.
+
+The image fallback resolves:
+
+```text
+explicit CLI override
+        ↓
+active Codex provider (~/.codex/config.toml + auth.json)
+        ↓
+legacy OPENAI_* fallback
+        ↓
+official OpenAI default
+```
+
+Inspect the sanitized active provider with:
+
+```bash
+python scripts/codex_provider_config.py
+```
+
+Check whether that provider actually exposes image routes with:
+
+```bash
+python scripts/efg.py provider-check
+```
+
+Never print or copy the provider token into prompts or repository files.
+
+### Manual trusted relay override
+
+Only when deliberately overriding the active Codex provider:
 
 ```bash
 python scripts/efg.py image \
@@ -101,9 +134,17 @@ python scripts/efg.py image \
   --allow-third-party
 ```
 
-Never trust a relay implicitly. It may receive the configured API key and any input images used for edits.
+A manually supplied relay may receive the configured API key and any input images used for edits, so explicit trust remains required.
 
 ### Provider compatibility probe
+
+With the active Codex/CC Switch provider:
+
+```bash
+python scripts/efg.py provider-check
+```
+
+With a separate manual relay:
 
 ```bash
 python scripts/efg.py provider-check \
@@ -112,6 +153,16 @@ python scripts/efg.py provider-check \
 ```
 
 This is a non-generation compatibility probe. It can check basic route/model exposure but cannot guarantee that every relay implements every OpenAI image parameter correctly.
+
+### Image model is independent from the Codex text model
+
+Do not reuse `model = ...` from Codex `config.toml` as the image model. The text/coding model and image-generation model are separate concerns.
+
+Routine image model resolution is:
+
+```text
+--model → OPENAI_IMAGE_MODEL → gpt-image-2
+```
 
 ### Final/high-resolution route
 
@@ -122,7 +173,7 @@ python scripts/efg.py image \
   --final
 ```
 
-`--final` / `--highres` uses `OPENAI_IMAGE_HIGHRES_MODEL` unless an explicit `--model` is supplied. If no final-quality model is configured, stop instead of silently falling back.
+`--final` / `--highres` uses `OPENAI_IMAGE_HIGHRES_MODEL` unless an explicit image `--model` is supplied. If no final-quality image model is configured, stop instead of silently falling back.
 
 ## Plot mode
 
@@ -181,7 +232,7 @@ Important rules:
 ```bash
 python scripts/efg.py prompt --figure-template problem-analysis --lang zh "建模背景"
 python scripts/efg.py image "建模背景" --figure-template full-modeling-pipeline --lang zh --dry-run
-python scripts/efg.py provider-check --base-url https://relay.example/v1 --allow-third-party
+python scripts/efg.py provider-check
 python scripts/efg.py plot request.json --spec-out output/spec.json --out-path output/figure --formats png pdf svg
 python scripts/efg.py render output/spec.json --out-path output/figure --formats png pdf svg
 python scripts/efg.py check
@@ -204,6 +255,7 @@ Common references:
 - `mathematical-modeling.md`
 - `chinese-labels.md`
 - `openai-image-workflow.md`
+- `codex-cc-switch.md`
 - `image-execution-reliability.md`
 - `highres-policy.md`
 - `editable-figure-handoff.md`
