@@ -21,18 +21,58 @@ def load_module():
     return module
 
 
-def test_custom_base_url_is_rejected():
+def args_for(base_url: str, model: str = "gpt-image-2", allow_third_party: bool = False):
+    return argparse.Namespace(
+        base_url=base_url,
+        model=model,
+        allow_third_party=allow_third_party,
+        n=1,
+        timeout=30,
+    )
+
+
+def test_official_base_url_is_allowed():
     module = load_module()
-    args = argparse.Namespace(base_url="https://relay.example/v1", model="gpt-image-2")
-    with pytest.raises(SystemExit, match="official OpenAI endpoint"):
-        module.validate_target(args)
+    assert module.validate_target(args_for("https://api.openai.com/v1")) is False
+
+
+def test_custom_base_url_requires_explicit_opt_in(monkeypatch):
+    module = load_module()
+    monkeypatch.delenv("OPENAI_ALLOW_THIRD_PARTY", raising=False)
+    with pytest.raises(SystemExit, match="allow-third-party"):
+        module.validate_target(args_for("https://relay.example/v1"))
+
+
+def test_custom_base_url_is_allowed_with_flag(monkeypatch):
+    module = load_module()
+    monkeypatch.delenv("OPENAI_ALLOW_THIRD_PARTY", raising=False)
+    args = args_for("https://relay.example/v1/", allow_third_party=True)
+    assert module.validate_target(args) is True
+    assert args.base_url == "https://relay.example/v1"
+
+
+def test_custom_base_url_is_allowed_with_environment_flag(monkeypatch):
+    module = load_module()
+    monkeypatch.setenv("OPENAI_ALLOW_THIRD_PARTY", "1")
+    assert module.validate_target(args_for("https://relay.example/v1")) is True
+
+
+def test_malformed_base_url_is_rejected():
+    module = load_module()
+    with pytest.raises(SystemExit, match="valid http"):
+        module.validate_target(args_for("relay.example/v1", allow_third_party=True))
+
+
+def test_embedded_credentials_in_base_url_are_rejected():
+    module = load_module()
+    with pytest.raises(SystemExit, match="embed credentials"):
+        module.validate_target(args_for("https://user:pass@relay.example/v1", allow_third_party=True))
 
 
 def test_non_gpt_image_model_is_rejected():
     module = load_module()
-    args = argparse.Namespace(base_url="https://api.openai.com/v1", model="other-model")
-    with pytest.raises(SystemExit, match="Only GPT Image models"):
-        module.validate_target(args)
+    with pytest.raises(SystemExit, match="Only GPT Image model"):
+        module.validate_target(args_for("https://api.openai.com/v1", model="other-model"))
 
 
 def test_dry_run_does_not_require_api_key():
@@ -49,6 +89,26 @@ def test_dry_run_does_not_require_api_key():
     )
     assert '"model": "gpt-image-2"' in result.stdout
     assert '"mode": "generate"' in result.stdout
+    assert '"third_party": false' in result.stdout
+
+
+def test_relay_dry_run_works_with_environment_opt_in():
+    env = os.environ.copy()
+    env.pop("OPENAI_API_KEY", None)
+    env.pop("OPENAI_API_KEY_FILE", None)
+    env["OPENAI_BASE_URL"] = "https://relay.example/v1"
+    env["OPENAI_ALLOW_THIRD_PARTY"] = "1"
+    result = subprocess.run(
+        [sys.executable, str(MODULE_PATH), "test research figure", "--dry-run"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert '"base_url": "https://relay.example/v1"' in result.stdout
+    assert '"third_party": true' in result.stdout
+    assert "third-party relay" in result.stderr
 
 
 def test_key_file_can_be_loaded(monkeypatch, tmp_path):
