@@ -39,6 +39,7 @@ Never use image generation for exact numeric geometry, axes, uncertainty bars, b
 8. Normalize concise plot requests with `scripts/build_plot_spec.py`, then render with `scripts/plot_publication_figure.py`.
 9. In mixed mode, render quantitative panels first and never ask the image model to redraw them.
 10. Verify labels, units, reading order, legends, values, axes, uncertainty, and scientific fidelity before finishing.
+11. When producing a showcase, benchmark, or reusable example, preserve the evidence chain described in `references/reproducibility-chain.md`.
 
 ## Image Mode
 
@@ -109,7 +110,9 @@ Read only what the task needs:
 - `references/plot-mode.md`
 - `references/mixed-mode.md`
 - `references/mathematical-modeling.md`
+- `references/chinese-labels.md`
 - `references/gpt-image-2-guidance.md`
+- `references/reproducibility-chain.md`
 
 ## Quality Rules
 
