@@ -1,0 +1,52 @@
+{
+  "suptitle": "Illustrative Sensitivity / Robustness Analysis",
+  "style": {
+    "font_size": 12,
+    "axes_linewidth": 1.6,
+    "font_family": ["Noto Sans CJK SC", "Microsoft YaHei", "SimHei", "DejaVu Sans", "sans-serif"]
+  },
+  "layout": {
+    "nrows": 1,
+    "ncols": 2,
+    "figsize": [11, 4.5],
+    "width_ratios": [1, 1.35],
+    "tight_layout_pad": 1.4
+  },
+  "panels": [
+    {
+      "type": "bar",
+      "title": "Sensitivity Index",
+      "categories": ["x1", "x2", "x3", "x4", "x5"],
+      "series": [[0.62, 0.48, 0.36, 0.25, 0.18]],
+      "labels": ["Index"],
+      "xlabel": "Parameter",
+      "ylabel": "Normalized index",
+      "annotate": true,
+      "annotate_fmt": "{:.2f}",
+      "legend": false,
+      "legend_outside": false,
+      "legend_loc": "best",
+      "legend_ncol": 1,
+      "grid": false,
+      "xtick_rotation": 0
+    },
+    {
+      "type": "trend",
+      "title": "Output under Parameter Perturbation",
+      "x": [-20, -10, 0, 10, 20],
+      "y_series": [
+        [0.82, 0.91, 1.00, 1.07, 1.12],
+        [1.18, 1.08, 1.00, 0.94, 0.90],
+        [1.26, 1.12, 1.00, 1.15, 1.31]
+      ],
+      "labels": ["±1% setting", "±5% setting", "±10% setting"],
+      "xlabel": "Parameter change (%)",
+      "ylabel": "Normalized output",
+      "legend": true,
+      "legend_outside": false,
+      "legend_loc": "best",
+      "legend_ncol": 3,
+      "grid": false
+    }
+  ]
+}
