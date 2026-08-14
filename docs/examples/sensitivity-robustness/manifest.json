@@ -1,0 +1,13 @@
+{
+  "slug": "sensitivity-robustness",
+  "mode": "plot",
+  "input_artifacts": ["brief.md", "request.json", "plot-spec.json"],
+  "output_artifact": "output.svg",
+  "verification": [
+    "all values are synthetic and explicitly disclosed",
+    "five sensitivity-index values are preserved exactly",
+    "three perturbation-response arrays are preserved exactly",
+    "zero-perturbation baseline is 1.00 for all response series",
+    "no image model is used for numeric geometry"
+  ]
+}
