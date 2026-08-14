@@ -1,0 +1,40 @@
+{
+  "suptitle": "Illustrative Sensitivity / Robustness Analysis",
+  "layout": {
+    "nrows": 1,
+    "ncols": 2,
+    "figsize": [11, 4.5],
+    "width_ratios": [1, 1.35]
+  },
+  "panels": [
+    {
+      "kind": "bar",
+      "title": "Sensitivity Index",
+      "xlabel": "Parameter",
+      "ylabel": "Normalized index",
+      "annotate": true,
+      "legend": false,
+      "data": {
+        "categories": ["x1", "x2", "x3", "x4", "x5"],
+        "series": {
+          "Index": [0.62, 0.48, 0.36, 0.25, 0.18]
+        }
+      }
+    },
+    {
+      "kind": "trend",
+      "title": "Output under Parameter Perturbation",
+      "xlabel": "Parameter change (%)",
+      "ylabel": "Normalized output",
+      "legend": true,
+      "data": {
+        "x": [-20, -10, 0, 10, 20],
+        "series": {
+          "±1% setting": [0.82, 0.91, 1.00, 1.07, 1.12],
+          "±5% setting": [1.18, 1.08, 1.00, 0.94, 0.90],
+          "±10% setting": [1.26, 1.12, 1.00, 1.15, 1.31]
+        }
+      }
+    }
+  ]
+}
