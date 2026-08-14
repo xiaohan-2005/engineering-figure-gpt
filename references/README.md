@@ -14,6 +14,7 @@ Load only the guidance needed for the current task.
 - `chinese-labels.md` — Chinese labels, fonts, mixed-language notation.
 - `gpt-image-2-guidance.md` — GPT image-specific guidance.
 - `openai-image-workflow.md` — official/relay image API workflow.
+- `codex-cc-switch.md` — command-line Codex + CC Switch provider autodiscovery and trust behavior.
 - `image-execution-reliability.md` — portable GPT image fallback reliability rules.
 - `highres-policy.md` — fail-closed final/high-resolution model routing.
 - `editable-figure-handoff.md` — final human-editable/vector handoff guidance.
