@@ -14,6 +14,7 @@ RUNTIME_SCRIPT_ALLOW = {
     "build_engineering_figure_prompt.py",
     "build_plot_spec.py",
     "check_setup.ps1",
+    "codex_provider_config.py",
     "efg.py",
     "generate_image.py",
     "plot_publication_figure.py",
