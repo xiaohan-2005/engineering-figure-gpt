@@ -14,18 +14,78 @@
 
 [English](README.en.md) · [安装说明](INSTALL.md) · [Showcase](docs/showcase.md)
 
-## Image Mode：现在支持一条命令完成 Prompt → Image
+## 适配你这种用法：CC Switch → 命令行 Codex → Skill
 
-在 Codex 内优先使用已经安装的内置 GPT 图像能力。为了可复现和便携运行，仓库同时提供 GPT Image-compatible CLI。
+如果你使用 CC Switch 配好 API，然后在 PowerShell/终端里直接运行：
 
-默认使用：
-
-```text
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_IMAGE_MODEL=gpt-image-2
+```powershell
+codex
 ```
 
-现在不再要求用户先手动生成 Prompt、再复制给 Image CLI。可以直接：
+现在**不需要再给这个 Skill 配第二套 Base URL 和 API Key**。
+
+运行链路是：
+
+```text
+CC Switch
+   ↓
+~/.codex/config.toml + ~/.codex/auth.json
+   ↓
+codex
+   ↓
+engineering-figure-gpt
+```
+
+Portable Image CLI 会优先读取当前 Codex live provider，包括常见的：
+
+- `config.toml` 中的 `model_provider`、`base_url`、`env_key`、`experimental_bearer_token`；
+- `auth.json` 中的 `OPENAI_API_KEY`。
+
+连接解析顺序：
+
+```text
+显式 CLI 参数
+    ↓
+当前 Codex / CC Switch Provider
+    ↓
+OPENAI_* 环境变量兼容层
+    ↓
+OpenAI 官方默认值
+```
+
+查看当前 Skill 能识别到的 Codex Provider：
+
+```powershell
+python scripts/codex_provider_config.py
+```
+
+这里只显示 Provider、Base URL、wire API、是否找到 Key 等安全信息，**不会打印真实 Key**。
+
+需要特别区分：**Codex 文本接口可用，不代表这个中转站一定支持图片接口。**
+
+因此第一次建议运行：
+
+```powershell
+python scripts/efg.py provider-check
+```
+
+在 CC Switch 已选中 Provider 的情况下，这里不需要再写 `--base-url` 或 `--allow-third-party`。
+
+详细说明见 [Codex CLI + CC Switch Integration](references/codex-cc-switch.md)。
+
+## Image Mode：一条命令完成 Prompt → Image
+
+在 Codex 内如果已有可用的内置 GPT 图像能力，可以直接使用。为了可复现和命令行运行，仓库同时提供 GPT Image-compatible CLI。
+
+图片模型与 Codex 的文本/代码模型分开解析。也就是说，即使 `config.toml` 中 Codex 当前使用的是某个 coding model，图片模式也不会拿它去调用 Images API。
+
+普通图片模型默认：
+
+```text
+OPENAI_IMAGE_MODEL → gpt-image-2
+```
+
+直接运行：
 
 ```bash
 python scripts/efg.py image \
@@ -38,32 +98,36 @@ python scripts/efg.py image \
 
 去掉 `--dry-run` 才会真正发起图片请求。
 
-## 自定义中转站
+如果使用的是 CC Switch，dry-run 中应该能看到类似：
 
-支持 OpenAI-compatible 中转站 Base URL，但必须显式确认信任：
-
-```powershell
-$env:OPENAI_BASE_URL = "https://你的中转站/v1"
-$env:OPENAI_ALLOW_THIRD_PARTY = "1"
-$env:OPENAI_IMAGE_MODEL = "gpt-image-2"
-$env:OPENAI_API_KEY_FILE = "$HOME/.codex/secrets/openai_api_key.txt"
+```text
+connection_source: codex-config
+codex_provider: <当前 Provider>
 ```
 
-也可以直接：
+## 手动指定其他中转站
+
+如果你不是复用 CC Switch 当前 Provider，而是**临时手动覆盖另一个 URL**，仍然要求显式确认信任：
 
 ```bash
 python scripts/efg.py image \
   "技术背景" \
   --figure-template system-architecture \
-  --base-url https://你的中转站/v1 \
+  --base-url https://你的另一个中转站/v1 \
   --allow-third-party
 ```
 
-这样设计是为了防止环境变量被误改后，把 API Key 或编辑图片静默发送给陌生服务。
+这条安全规则是为了防止 API Key 或编辑图片被静默发送给陌生服务。
 
 ### 中转站兼容检查
 
-现在新增不生成图片的兼容探测：
+复用当前 CC Switch/Codex Provider：
+
+```bash
+python scripts/efg.py provider-check
+```
+
+手动测试另一个 Relay：
 
 ```bash
 python scripts/efg.py provider-check \
@@ -91,7 +155,7 @@ OPENAI_IMAGE_HIGHRES_MODEL
 
 ```powershell
 $env:OPENAI_IMAGE_MODEL = "gpt-image-2"
-$env:OPENAI_IMAGE_HIGHRES_MODEL = "<你的官方或中转站实际提供的最终质量模型>"
+$env:OPENAI_IMAGE_HIGHRES_MODEL = "<你的 Provider 实际提供的最终质量图片模型>"
 ```
 
 调用：
@@ -103,7 +167,7 @@ python scripts/efg.py image \
   --final
 ```
 
-如果用户要求 `--final` / `--highres`，但没有配置最终质量模型，也没有显式传 `--model`，CLI 会直接停止，**不会偷偷降级模型、画质、尺寸或 Provider**。
+如果用户要求 `--final` / `--highres`，但没有配置最终质量模型，也没有显式传图片 `--model`，CLI 会直接停止，**不会偷偷降级模型、画质、尺寸或 Provider**。
 
 详见 [High-resolution Policy](references/highres-policy.md)。
 
@@ -244,11 +308,12 @@ Runtime 安装到：
 & "$HOME/.codex/skills/engineering-figure-gpt/scripts/wizard.ps1"
 ```
 
-Wizard 现在支持：
+Wizard 支持：
 
 - 查看全部工程/数学建模模板；
 - 一步完成 Prompt → Image；
-- 官方 OpenAI / 自定义可信中转站；
+- 复用 Codex / CC Switch 当前 Provider；
+- 手动官方 OpenAI / 自定义可信中转站；
 - Provider compatibility probe；
 - `--final` 高质量路由；
 - 一步完成 Plot Request → Spec → Figure。
@@ -259,11 +324,11 @@ Wizard 现在支持：
 # 仅生成 Prompt
 python scripts/efg.py prompt --figure-template problem-analysis --lang zh "建模背景"
 
-# Prompt + 生图一步完成
+# Prompt + 生图一步完成；默认优先复用 Codex/CC Switch Provider
 python scripts/efg.py image "建模背景" --figure-template full-modeling-pipeline --lang zh --dry-run
 
-# 检查中转站兼容性，不生成图片
-python scripts/efg.py provider-check --base-url https://你的中转站/v1 --allow-third-party
+# 检查当前 Codex/CC Switch Provider 的图片兼容性，不生成图片
+python scripts/efg.py provider-check
 
 # Plot Request -> Spec -> Figure 一步完成
 python scripts/efg.py plot request.json --spec-out output/spec.json --out-path output/figure --formats png pdf svg
@@ -296,7 +361,8 @@ GitHub Actions 当前检查：
 - Markdown 链接和图片路径
 - Figure Brief / Plot Request / Plot Spec 数据契约
 - GPT Image generation/edit 请求构造
-- 官方地址和第三方中转站显式信任规则
+- Codex / CC Switch provider 解析与 secret-redaction
+- 官方地址和手动第三方中转站信任规则
 - malformed URL / embedded credential / model safety
 - final/high-resolution fail-closed 路由
 - HTTP error / timeout / malformed response / empty output
@@ -342,7 +408,7 @@ Verification
 3. 自然语言是用户入口，JSON 是内部契约。
 4. GPT 只用在真正需要语义构图的地方。
 5. 中文科研和数学建模是一等场景。
-6. 自定义中转站必须显式信任。
+6. 当前 Codex/CC Switch Provider 可以直接复用；手动覆盖其他中转站仍需显式信任。
 7. 最终质量请求不得静默降级。
 8. Runtime 必须精简、可检查。
 9. 最终输出尽量保留可复现证据链和可编辑 handoff。
