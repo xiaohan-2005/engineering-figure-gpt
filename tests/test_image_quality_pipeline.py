@@ -50,9 +50,9 @@ def test_correct_edit_prompt_is_preservation_first():
     assert "do not treat this as a from-scratch generation task" in prompt
 
 
-def test_efg_edit_dry_run_resolves_to_edit_mode(tmp_path):
+def test_efg_edit_dry_run_preserves_legal_source_canvas(tmp_path):
     image = tmp_path / "source.png"
-    image.write_bytes(b"placeholder")
+    Image.new("RGB", (1536, 1024), "white").save(image)
     proc = subprocess.run(
         [
             sys.executable,
@@ -70,6 +70,47 @@ def test_efg_edit_dry_run_resolves_to_edit_mode(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert '"mode": "edit"' in proc.stdout
     assert '"quality": "high"' in proc.stdout
+    assert '"size": "1536x1024"' in proc.stdout
+    assert '"input_fidelity": null' in proc.stdout
+    assert "Preserving source canvas" in proc.stderr
+
+
+def test_efg_draft_profile_uses_low_quality(tmp_path):
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/efg.py"),
+            "image",
+            "simple research workflow",
+            "--quality-profile",
+            "draft",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert '"quality": "low"' in proc.stdout
+    assert '"size": "1024x1024"' in proc.stdout
+
+
+def test_efg_final_profile_uses_larger_canvas_without_forcing_highres_route():
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/efg.py"),
+            "image",
+            "simple research workflow",
+            "--quality-profile",
+            "final",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert '"quality": "high"' in proc.stdout
+    assert '"size": "2048x1152"' in proc.stdout
 
 
 def test_verify_image_output_accepts_expected_dimensions(tmp_path):
