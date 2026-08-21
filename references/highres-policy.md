@@ -1,8 +1,10 @@
 # Final / High-Resolution Policy
 
-Use this reference when the user explicitly asks for a final export, high-resolution figure, 2K-quality output, or another final-quality path.
+Use this reference when the user explicitly asks for final export, high resolution, 2K/4K-like output, or another concrete raster-quality target.
 
-## Routine versus final-quality generation
+## Model tier and raster size are separate
+
+Do not equate a high-resolution model route with a guaranteed pixel size.
 
 Routine conceptual generation uses:
 
@@ -10,23 +12,33 @@ Routine conceptual generation uses:
 OPENAI_IMAGE_MODEL
 ```
 
-and falls back to `gpt-image-2` when no routine model is configured.
+and otherwise defaults to `gpt-image-2`.
 
-Final/high-resolution generation uses:
+Final/high-resolution intent uses:
 
 ```text
 OPENAI_IMAGE_HIGHRES_MODEL
 ```
 
-or an explicit `--model` supplied by the user.
+or an explicit image `--model` supplied by the user.
+
+The requested provider canvas is controlled separately with:
+
+```text
+--size WIDTHxHEIGHT
+```
+
+The returned raster must be checked when an exact pixel target matters.
 
 ## Triggering final-quality routing
 
-The CLI treats the following as final-quality intent:
+Treat these as final-quality intent:
 
 - `--highres`
 - `--final`
-- prompt text containing common high-resolution/final-export phrases such as `2K`, `high resolution`, `final export`, `final quality`, `高分辨率`, or `最终导出`
+- prompt text containing high-resolution/final-export phrases such as `2K`, `high resolution`, `final export`, `final quality`, `高分辨率`, or `最终导出`.
+
+The final route should also use the `final` image quality contract unless the user explicitly selects another profile.
 
 ## Fail-closed rule
 
@@ -38,31 +50,62 @@ Do **not** silently:
 - lower image quality;
 - shrink the requested size;
 - switch providers or relay hosts;
-- alter the requested figure type.
+- alter the requested figure type;
+- claim that a smaller raster is equivalent to a requested 2K/4K target.
 
 The user must explicitly choose a final-quality model or explicitly retry without final-quality intent.
 
+## Exact pixel targets
+
+Provider/model support for raster sizes varies. Do not invent a supported size.
+
+If the user explicitly requests a concrete pixel dimension or a provider-specific 2K/4K mode:
+
+1. use an actual size/model option supported by that provider, if known;
+2. request that size explicitly;
+3. verify the returned raster dimensions;
+4. fail/report the mismatch if the provider returns a different size.
+
+Example objective verification:
+
+```bash
+python scripts/efg.py verify-image output/figure.png \
+  --expected-size 1536x1024 \
+  --require-format png
+```
+
+A provider route that only returns a smaller native canvas cannot be called 2K/4K simply because the model name contains words such as `final`, `pro`, or `highres`.
+
+## Visual clarity still requires inspection
+
+Pixel dimensions do not prove readability. After metadata verification, inspect the image using `references/visual-qa.md`.
+
+Final output should have:
+
+- readable essential labels at intended paper width;
+- no micro-text used to simulate detail;
+- sharp text regions and module boundaries;
+- clear arrowheads and consistent line weights;
+- no clipping, ghosting, or visible blur;
+- stable scientific content.
+
 ## Trusted relay example
 
-A relay may expose a provider-specific final model name while still following the OpenAI Images API shape:
+A relay may expose provider-specific image model names while following an OpenAI Images-compatible shape:
 
 ```powershell
 $env:OPENAI_BASE_URL = "https://relay.example/v1"
 $env:OPENAI_ALLOW_THIRD_PARTY = "1"
 $env:OPENAI_IMAGE_MODEL = "gpt-image-2"
-$env:OPENAI_IMAGE_HIGHRES_MODEL = "gpt-image-2-final"
+$env:OPENAI_IMAGE_HIGHRES_MODEL = "<provider-final-image-model>"
 ```
 
-The exact model name is provider-specific. Never invent a model alias that the relay does not actually expose.
+Never invent a model alias that the relay does not expose.
 
-## Recommended command
+Before spending credits, use:
 
-```powershell
-python scripts/efg.py image `
-  "technical background" `
-  --figure-template system-architecture `
-  --final `
-  --save-prompt output/final-prompt.txt
+```bash
+python scripts/efg.py provider-check
 ```
 
-For a relay, first run `efg provider-check` to verify the configured base URL is reachable and appears to expose an image-generation route.
+A provider check can confirm route/model exposure but cannot guarantee that every size/quality/edit parameter is implemented correctly. Verify the returned artifact when the output contract matters.
