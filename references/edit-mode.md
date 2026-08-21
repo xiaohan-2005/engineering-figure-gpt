@@ -8,7 +8,27 @@ Use:
 python scripts/efg.py edit <input-image> "<instruction>" --mode <mode>
 ```
 
-The edit prompt is built by `scripts/build_image_edit_prompt.py` and then sent through the normal GPT Image edit path with `input_fidelity=high` by default.
+The edit prompt is built by `scripts/build_image_edit_prompt.py` and then sent through the GPT Image edit path with an explicit preservation contract.
+
+## GPT Image 2 model behavior
+
+For `gpt-image-2`, **omit `input_fidelity`**. The model always processes image inputs at high fidelity and the API does not allow changing this parameter.
+
+Canvas preservation is handled separately from semantic preservation:
+
+- if the primary source width/height already satisfy GPT Image 2 output-size rules, use the exact source canvas by default;
+- if the source aspect ratio is supported but the dimensions are not legal, derive the nearest legal size and emit an explicit warning;
+- if the source cannot be mapped safely, fail or require an explicit legal `--size` instead of silently changing the canvas;
+- an explicit `--size` always takes precedence.
+
+GPT Image 2 concrete output sizes must satisfy all of these:
+
+- each edge <= 3840 px;
+- both edges are divisible by 16;
+- long-edge / short-edge ratio <= 3:1;
+- total pixels are between 655,360 and 8,294,400.
+
+For other GPT Image models or relay-specific aliases, do not assume GPT Image 2-only parameters or flexible-size behavior. Use the provider/model's actual capability and make any canvas change explicit.
 
 ## Four edit modes
 
@@ -88,13 +108,13 @@ The primary input remains the scientific/content baseline. Additional references
 
 ## Quality profile
 
-Edit prompts also receive the reusable image quality contract:
+Edit prompts receive the reusable image quality contract:
 
 - `draft`
 - `paper` (default)
 - `final`
 
-`--final` / `--highres` should use the final-quality contract and final model route unless explicitly overridden.
+The quality profile controls prompt/rendering expectations. `--final` / `--highres` separately request the configured final model route and remain fail-closed if that model is not configured.
 
 ## Post-edit acceptance
 
@@ -102,4 +122,4 @@ After editing, compare the new image against the source.
 
 For `correct`, any unrelated movement, label rewrite, arrow change, palette drift, or geometry redesign is a failure even if the requested correction is present.
 
-For all modes, run the visual QA checklist in `references/visual-qa.md`. For objective raster-size requirements, run `efg verify-image`.
+Also verify that the returned raster matches the resolved output canvas. For all modes, run `references/visual-qa.md`; for objective raster constraints, run `efg verify-image`.
