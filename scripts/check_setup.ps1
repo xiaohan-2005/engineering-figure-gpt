@@ -34,14 +34,26 @@ $required = @(
     "scripts/generate_image.py",
     "scripts/codex_provider_config.py",
     "scripts/build_engineering_figure_prompt.py",
+    "scripts/build_image_edit_prompt.py",
+    "scripts/verify_image_output.py",
     "scripts/build_plot_spec.py",
     "scripts/plot_publication_figure.py",
     "assets/prompt-templates/engineering-figure-templates.json",
-    "assets/prompt-templates/mathematical-modeling-templates.json"
+    "assets/prompt-templates/mathematical-modeling-templates.json",
+    "assets/prompt-templates/image-quality-contracts.json",
+    "references/image-quality-contract.md",
+    "references/edit-mode.md",
+    "references/visual-qa.md"
 )
 foreach ($rel in $required) {
     if (Test-Path (Join-Path $SkillDir $rel)) { Status "PASS" "Found $rel" }
     else { Status "FAIL" "Missing $rel"; $failed = $true }
+}
+
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    python -c "from PIL import Image; print(Image.__version__)" *> $null
+    if ($LASTEXITCODE -eq 0) { Status "PASS" "Pillow available for verify-image" }
+    else { Status "FAIL" "Pillow missing; install requirements.txt so verify-image can inspect raster outputs"; $failed = $true }
 }
 
 $systemImagen = "$HOME/.codex/skills/.system/imagen/SKILL.md"
@@ -125,7 +137,7 @@ if ($env:OPENAI_IMAGE_HIGHRES_MODEL) {
 }
 
 if (-not $keyReady) {
-    Status "WARN" "No reusable image API credential detected; Plot Mode and dry runs still work"
+    Status "WARN" "No reusable image API credential detected; Plot Mode, prompt building, edit dry-runs, and raster verification still work"
     $warned = $true
 }
 
@@ -136,6 +148,12 @@ if (Get-Command python -ErrorAction SilentlyContinue -and (Test-Path (Join-Path 
     else { Status "FAIL" "Offline CLI smoke check failed"; $failed = $true }
     Pop-Location
 }
+
+Write-Host ""
+Write-Host "Key image workflows:" -ForegroundColor Cyan
+Write-Host "  python scripts/efg.py image ... --quality-profile paper"
+Write-Host "  python scripts/efg.py edit figure.png \"fix one label only\" --mode correct --dry-run"
+Write-Host "  python scripts/efg.py verify-image output/figure.png --expected-size 1536x1024 --require-format png"
 
 Write-Host ""
 if ($failed) {
