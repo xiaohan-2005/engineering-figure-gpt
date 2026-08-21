@@ -29,6 +29,8 @@ Publication Image Quality Contract
 用户风格要求
 +
 Edit Preservation Contract（修改已有图片时）
++
+可选 Mask 空间约束（局部修改时）
 ```
 
 质量合同位于：
@@ -130,6 +132,29 @@ python scripts/efg.py edit figure.png \
 ```
 
 主输入图始终是科学内容基准，参考图只能辅助风格或重构，不能静默覆盖原图科学信息。
+
+### Mask 局部修改
+
+如果只是改一个局部区域，可以在 Preservation Contract 之外再增加空间约束：
+
+```bash
+python scripts/efg.py edit figure.png \
+  "只修改这个模块里的错误标签" \
+  --mode correct \
+  --mask edit-mask.png \
+  --preserve "所有箭头和未涉及标签"
+```
+
+Mask 上传前会自动检查：
+
+- 文件必须小于 50 MB；
+- 尺寸必须和主输入图完全一致；
+- 图片格式必须和主输入图一致；
+- 必须包含 alpha 通道。
+
+使用 `--mask` 时，最终 Edit Prompt 还会自动加入“mask 外内容保持不变”的约束，只允许边界处为了自然融合进行必要微调。
+
+需要注意：**Mask 是强空间引导，不是像素级绝对边界。** 修改后仍然要和原图逐项比较；如果 `correct` 模式下 mask 外区域发生无关变化，仍然算失败。
 
 ### GPT Image 2 的编辑规则
 
@@ -236,7 +261,7 @@ python scripts/efg.py verify-image output/figure.png \
 4. **箭头与线条**：箭头端点、方向、穿字、断裂、重影；
 5. **颜色与对比**：颜色语义一致，文字可读；
 6. **栅格清晰度**：原尺寸和约 50% 缩放都检查；
-7. **修改保留性**：Edit 前后比较，允许范围之外不能发生无关改变。
+7. **修改保留性**：Edit 前后比较，允许范围之外不能发生无关改变；如果使用 Mask，还要专门检查 mask 外区域。
 
 失败后优先局部修改：
 
@@ -404,6 +429,7 @@ Raster Fixture -> verify-image
 Wizard 会分别询问：
 
 - `draft / paper / final` 视觉质量档；
+- Edit 时是否提供可选 Mask；
 - 是否单独启用 `--final` 模型路由；
 - 是否调用真实 API；
 - 是否使用当前 CC Switch Provider 或手动可信 Relay。
@@ -427,6 +453,9 @@ python scripts/efg.py image "建模背景" --figure-template full-modeling-pipel
 
 # 最小范围修改 dry-run
 python scripts/efg.py edit figure.png "只修正第二个模块的错别字" --mode correct --dry-run
+
+# Mask 局部修改 dry-run
+python scripts/efg.py edit figure.png "只修改掩膜区域" --mode correct --mask edit-mask.png --dry-run
 
 # 检查真实像素
 python scripts/efg.py verify-image output/figure.png --expected-size 1536x1024 --require-format png

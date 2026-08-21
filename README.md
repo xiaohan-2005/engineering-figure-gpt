@@ -53,6 +53,8 @@ publication image-quality contract
 user style note
         +
 edit preservation contract (when editing)
+        +
+optional spatial mask constraint (localized edits)
 ```
 
 The reusable quality contracts live in:
@@ -139,6 +141,22 @@ Use repeatable controls when the boundary matters:
 
 Additional visual references can be passed with `--reference-image`. The primary input image remains the scientific/content baseline.
 
+### Mask-guided localized correction
+
+For a local typo, wrong label, arrow region, or another bounded defect, add a spatial mask on top of the semantic preservation contract:
+
+```bash
+python scripts/efg.py edit figure.png \
+  "Fix only the mislabeled module" \
+  --mode correct \
+  --mask edit-mask.png \
+  --preserve "all arrows and unaffected labels"
+```
+
+Before upload, the portable path checks that the mask is smaller than 50 MB, matches the primary figure's dimensions and image format exactly, and contains an alpha channel. The resolved edit prompt also preserves content outside the mask except minimal blending at the boundary.
+
+A mask is **strong spatial guidance, not a pixel-perfect guarantee**. The result still has to pass source-vs-result Visual QA; an unrelated change outside the intended region is a failed `correct` edit.
+
 ### GPT Image 2 editing behavior
 
 For `gpt-image-2`, **do not pass `input_fidelity`**. GPT Image 2 always processes image inputs at high fidelity and the API does not allow changing that setting.
@@ -163,7 +181,7 @@ Before final paper use, inspect conceptual images in this order:
 4. arrows and line quality
 5. color/contrast
 6. raster clarity at native and approximately 50% scale
-7. source-vs-edit preservation when editing
+7. source-vs-edit preservation when editing, including unintended changes outside a mask
 
 Use localized correction instead of full regeneration when only one region is wrong:
 
@@ -384,7 +402,7 @@ Interactive wizard also runs from the source checkout but targets the installed 
   -SkillDir "$HOME/.codex/skills/engineering-figure-gpt"
 ```
 
-The wizard covers prompt building, image generation, preservation-first editing, raster verification, provider checking, exact plots, and offline runtime checks. It reuses active Codex / CC Switch provider configuration by default.
+The wizard covers prompt building, image generation, preservation-first editing (including optional spatial masks), raster verification, provider checking, exact plots, and offline runtime checks. It reuses active Codex / CC Switch provider configuration by default.
 
 ## Relay configuration
 
@@ -416,6 +434,9 @@ python scripts/efg.py image "建模背景" --figure-template full-modeling-pipel
 
 # localized image correction dry-run
 python scripts/efg.py edit figure.png "只修正第二个模块的错别字" --mode correct --dry-run
+
+# mask-guided localized correction dry-run
+python scripts/efg.py edit figure.png "只修改掩膜区域" --mode correct --mask edit-mask.png --dry-run
 
 # explicit raster verification
 python scripts/efg.py verify-image output/figure.png --expected-size 1536x1024 --require-format png
@@ -467,6 +488,7 @@ CI checks include:
 - engineering + mathematical-modeling prompt packs
 - injected image-quality contracts
 - preservation-first edit prompt behavior
+- mask validation and mask multipart edit construction
 - GPT Image 2 model-specific size/fidelity safety
 - objective raster-size/format verification
 - local Markdown links and image paths
@@ -479,7 +501,7 @@ CI checks include:
 - final/high-resolution fail-closed model routing
 - HTTP error, timeout, malformed-response, and empty-output failure paths
 - real local plot rendering smoke tests
-- pruned runtime token budget
+- pruned runtime context/byte budgets
 - offline CLI smoke checks
 
 ## Repository map
@@ -490,7 +512,7 @@ CI checks include:
 | `assets/prompt-templates/` | engineering/modeling templates + reusable image quality contracts |
 | `references/` | quality, edit, visual QA, plotting, Chinese, modeling, relay, final-quality, reproducibility, handoff guidance |
 | `scripts/efg.py` | unified user-facing CLI |
-| `scripts/image_model_policy.py` | shared GPT Image 2 fidelity/size/canvas policy |
+| `scripts/image_model_policy.py` | shared GPT Image 2 fidelity/size/canvas/mask policy |
 | `scripts/build_image_edit_prompt.py` | preservation-first edit prompt builder |
 | `scripts/verify_image_output.py` | objective raster dimension/format/aspect verifier |
 | `scripts/generate_image.py` | GPT Image-compatible official/CC Switch/relay fallback |
@@ -513,6 +535,7 @@ CI checks include:
 - not a full paper-writing system
 - not permission to fabricate missing numeric data
 - not a guarantee that a model called `highres` returned a particular pixel size
+- not a guarantee that a spatial mask is a pixel-perfect edit boundary
 - not a guarantee that every third-party relay implements every OpenAI image parameter identically
 - not a replacement for visual inspection of generated labels, arrows, clarity, and scientific fidelity
 - not a workflow that regenerates an entire figure every time one label is wrong

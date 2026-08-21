@@ -212,10 +212,12 @@ def validate_target(args: argparse.Namespace) -> bool:
             )
         if getattr(args, "background", None) == "transparent":
             raise SystemExit("GPT Image 2 does not currently support transparent backgrounds.")
-        try:
-            validate_gpt_image_2_size(str(args.size))
-        except ValueError as exc:
-            raise SystemExit(str(exc)) from exc
+        size = getattr(args, "size", None)
+        if size:
+            try:
+                validate_gpt_image_2_size(str(size))
+            except ValueError as exc:
+                raise SystemExit(str(exc)) from exc
     return third_party
 
 
