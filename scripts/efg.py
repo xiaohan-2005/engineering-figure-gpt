@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 QUALITY_PATH = ROOT / "assets" / "prompt-templates" / "image-quality-contracts.json"
+RASTER_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def run(parts: list[str]) -> int:
@@ -133,6 +135,59 @@ def resolve_prompt_output_path(save_prompt: str | None, temp_dir: str) -> Path:
     return Path(temp_dir) / "final-prompt.txt"
 
 
+def resolved_requested_size(args: argparse.Namespace) -> str:
+    return str(getattr(args, "size", None) or os.getenv("OPENAI_IMAGE_SIZE", "1536x1024"))
+
+
+def resolved_requested_format(args: argparse.Namespace) -> str:
+    return str(getattr(args, "output_format", None) or os.getenv("OPENAI_IMAGE_OUTPUT_FORMAT", "png"))
+
+
+def output_paths_from_stdout(stdout: str) -> list[str]:
+    paths: list[str] = []
+    for line in stdout.splitlines():
+        text = line.strip()
+        if not text or text.startswith("{") or text.startswith("["):
+            continue
+        candidate = Path(text)
+        if candidate.suffix.lower() in RASTER_SUFFIXES:
+            paths.append(text)
+    return paths
+
+
+def run_image_and_verify(args: argparse.Namespace, command: list[str]) -> int:
+    """Run the image generator and verify the returned raster contract.
+
+    Dry-runs are never verified because no image artifact is created. Live image/edit
+    commands routed through efg verify that each saved raster can be opened and that
+    the provider honored the requested size/format when those settings are concrete.
+    """
+
+    proc = subprocess.run([sys.executable, *command], cwd=ROOT, capture_output=True, text=True)
+    if proc.stdout:
+        print(proc.stdout, end="")
+    if proc.stderr:
+        print(proc.stderr, end="", file=sys.stderr)
+    if proc.returncode != 0:
+        return proc.returncode
+    if getattr(args, "dry_run", False):
+        return 0
+
+    outputs = output_paths_from_stdout(proc.stdout)
+    if not outputs:
+        print("Image command succeeded but no raster output path could be verified.", file=sys.stderr)
+        return 1
+
+    verify_command = [str(SCRIPTS / "verify_image_output.py"), *outputs]
+    expected_size = resolved_requested_size(args)
+    if expected_size.lower() != "auto":
+        verify_command += ["--expected-size", expected_size]
+    expected_format = resolved_requested_format(args)
+    if expected_format:
+        verify_command += ["--require-format", expected_format]
+    return run(verify_command)
+
+
 def cmd_prompt(args: argparse.Namespace) -> int:
     cmd = [
         str(SCRIPTS / "build_engineering_figure_prompt.py"),
@@ -198,7 +253,7 @@ def cmd_image(args: argparse.Namespace) -> int:
                 encoding="utf-8",
             )
 
-        return run([generator, "--prompt-file", str(prompt_path), *runtime])
+        return run_image_and_verify(args, [generator, "--prompt-file", str(prompt_path), *runtime])
 
 
 def cmd_edit(args: argparse.Namespace) -> int:
@@ -239,7 +294,10 @@ def cmd_edit(args: argparse.Namespace) -> int:
             image_args += ["--input-image", image]
         if args.input_fidelity is None:
             image_args += ["--input-fidelity", "high"]
-        return run([generator, "--prompt-file", str(prompt_path), *image_args, *runtime])
+        return run_image_and_verify(
+            args,
+            [generator, "--prompt-file", str(prompt_path), *image_args, *runtime],
+        )
 
 
 def cmd_verify_image(args: argparse.Namespace) -> int:
