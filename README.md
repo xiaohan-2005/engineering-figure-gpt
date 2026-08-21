@@ -43,7 +43,7 @@ Core rule: **numeric truth overrides aesthetics**. Exact values, axes, uncertain
 
 ## Image Pipeline v2: content constraints + quality constraints
 
-A domain prompt should not carry every visual rule by itself. Engineering Figure GPT now composes conceptual prompts from separate layers:
+A domain prompt should not carry every visual rule by itself. Engineering Figure GPT composes conceptual prompts from separate layers:
 
 ```text
 domain/content template
@@ -66,6 +66,12 @@ Profiles:
 - `draft`: structural exploration
 - `paper`: default paper-ready constraints
 - `final`: strongest final-export constraints
+
+Default rendering hints when no explicit runtime override is supplied:
+
+- `draft` → `quality=low`, `size=1024x1024`
+- `paper` → `quality=high`, `size=1536x1024`
+- `final` quality profile → `quality=high`, `size=2048x1152`
 
 The `paper`/`final` contracts explicitly constrain:
 
@@ -133,7 +139,17 @@ Use repeatable controls when the boundary matters:
 
 Additional visual references can be passed with `--reference-image`. The primary input image remains the scientific/content baseline.
 
-Edit mode defaults to `input_fidelity=high` unless explicitly overridden.
+### GPT Image 2 editing behavior
+
+For `gpt-image-2`, **do not pass `input_fidelity`**. GPT Image 2 always processes image inputs at high fidelity and the API does not allow changing that setting.
+
+If `--size` is omitted for an edit, the CLI inspects the primary source image:
+
+- legal GPT Image 2 source dimensions → preserve the exact canvas;
+- unsupported pixel dimensions but supported aspect ratio → use the nearest legal canvas and print a warning;
+- unsafe/unresolvable canvas → fail or require an explicit legal `--size` instead of silently changing the figure.
+
+This is especially important for `correct`: fixing one label should not unexpectedly convert the figure to a different aspect ratio.
 
 See [Edit Mode](references/edit-mode.md).
 
@@ -164,7 +180,7 @@ See [Visual QA](references/visual-qa.md).
 
 Routine image generation uses `OPENAI_IMAGE_MODEL` and otherwise defaults to `gpt-image-2`.
 
-Final-quality intent uses `OPENAI_IMAGE_HIGHRES_MODEL` or an explicit image `--model`:
+Final-model routing uses `OPENAI_IMAGE_HIGHRES_MODEL` or an explicit image `--model`:
 
 ```bash
 python scripts/efg.py image \
@@ -173,9 +189,11 @@ python scripts/efg.py image \
   --final
 ```
 
-If final/high-resolution intent has no configured final model, the CLI stops instead of silently downgrading.
+If `--final` / `--highres` has no configured final model, the CLI stops instead of silently downgrading.
 
-But a high-resolution model name does **not** prove the actual returned raster dimensions. Provider canvas size is a separate request parameter, and the returned file can be checked objectively:
+A high-resolution model name does **not** prove the returned raster dimensions. For GPT Image 2, concrete output sizes must satisfy its model constraints: both edges divisible by 16, maximum edge 3840 px, long/short ratio at most 3:1, and total pixels between 655,360 and 8,294,400.
+
+The returned file can be checked objectively:
 
 ```bash
 python scripts/efg.py verify-image output/figure.png \
@@ -192,7 +210,7 @@ python scripts/efg.py verify-image output/figure.png \
   --min-megapixels 1.5
 ```
 
-Never claim 2K/4K/final-size output solely because a model name contains `final`, `pro`, or `highres`. If the user requests an explicit pixel target and the provider cannot return it, report that limitation rather than silently treating a smaller raster as equivalent.
+Never claim 2K/4K/final-size output solely because a model name contains `final`, `pro`, or `highres`. If the provider returns the wrong raster size, report the mismatch rather than silently accepting it.
 
 See [Final / High-Resolution Policy](references/highres-policy.md).
 
@@ -326,15 +344,15 @@ git clone https://github.com/xiaohan-2005/engineering-figure-gpt.git "$HOME/engi
 & "$HOME/engineering-figure-gpt/scripts/install_and_test.ps1"
 ```
 
-The installer syncs a **pruned runtime package** to:
+The installer syncs a **pruned execution runtime** to:
 
 ```text
 ~/.codex/skills/engineering-figure-gpt
 ```
 
-Repository-only docs, examples, tests, and CI files are not copied into the Codex runtime.
+The installed Runtime intentionally contains the execution Skill, prompt assets, core references, and executable Python scripts. Repository-only docs, tests, CI validators, installer diagnostics, and the interactive setup helper remain in the source checkout so they do not inflate the Codex Runtime context budget.
 
-The default installer now performs offline E2E checks for:
+The default installer performs offline E2E checks for:
 
 ```text
 Plot Request -> Spec -> Renderer -> PNG
@@ -350,21 +368,23 @@ Optional paid live image smoke test:
 & "$HOME/engineering-figure-gpt/scripts/install_and_test.ps1" -TestLiveImage
 ```
 
-The live smoke test routes through `efg image`, requests a concrete raster size, then checks the returned PNG dimensions instead of only checking that a non-empty file exists.
+The live smoke test routes through `efg image`, requests a concrete raster size, then verifies the returned PNG dimensions.
 
-Setup diagnostics:
-
-```powershell
-& "$HOME/.codex/skills/engineering-figure-gpt/scripts/check_setup.ps1"
-```
-
-Interactive wizard:
+Setup diagnostics use the source helper while inspecting the installed Runtime:
 
 ```powershell
-& "$HOME/.codex/skills/engineering-figure-gpt/scripts/wizard.ps1"
+& "$HOME/engineering-figure-gpt/scripts/check_setup.ps1" `
+  -SkillDir "$HOME/.codex/skills/engineering-figure-gpt"
 ```
 
-The wizard now covers prompt building, image generation, preservation-first editing, raster verification, provider checking, exact plots, and offline runtime checks. It reuses active Codex / CC Switch provider configuration by default.
+Interactive wizard also runs from the source checkout but targets the installed Runtime:
+
+```powershell
+& "$HOME/engineering-figure-gpt/scripts/wizard.ps1" `
+  -SkillDir "$HOME/.codex/skills/engineering-figure-gpt"
+```
+
+The wizard covers prompt building, image generation, preservation-first editing, raster verification, provider checking, exact plots, and offline runtime checks. It reuses active Codex / CC Switch provider configuration by default.
 
 ## Relay configuration
 
@@ -447,6 +467,7 @@ CI checks include:
 - engineering + mathematical-modeling prompt packs
 - injected image-quality contracts
 - preservation-first edit prompt behavior
+- GPT Image 2 model-specific size/fidelity safety
 - objective raster-size/format verification
 - local Markdown links and image paths
 - Figure Brief schema behavior
@@ -467,16 +488,17 @@ CI checks include:
 |---|---|
 | `SKILL.md` | Codex routing, quality, editing, verification, and plotting workflow |
 | `assets/prompt-templates/` | engineering/modeling templates + reusable image quality contracts |
-| `references/` | quality, edit, visual QA, modes, plotting, Chinese, modeling, relay, final-quality, reproducibility, handoff guidance |
+| `references/` | quality, edit, visual QA, plotting, Chinese, modeling, relay, final-quality, reproducibility, handoff guidance |
 | `scripts/efg.py` | unified user-facing CLI |
+| `scripts/image_model_policy.py` | shared GPT Image 2 fidelity/size/canvas policy |
 | `scripts/build_image_edit_prompt.py` | preservation-first edit prompt builder |
 | `scripts/verify_image_output.py` | objective raster dimension/format/aspect verifier |
 | `scripts/generate_image.py` | GPT Image-compatible official/CC Switch/relay fallback |
 | `scripts/build_plot_spec.py` | concise request → normalized exact-plot spec |
 | `scripts/plot_publication_figure.py` | multi-panel deterministic renderer |
 | `scripts/sync_codex_skill.py` | pruned runtime sync |
-| `scripts/check_setup.ps1` | Windows/Codex diagnostics |
-| `scripts/wizard.ps1` | guided generate/edit/verify/plot workflow |
+| `scripts/check_setup.ps1` | source-side Windows/Codex diagnostics for the installed Runtime |
+| `scripts/wizard.ps1` | source-side guided workflow targeting the installed Runtime |
 | `schemas/` | Figure Brief, Plot Request, normalized Plot Spec contracts |
 | `examples/` | reusable plot/brief inputs |
 | `docs/examples/` | completed reproducible showcase evidence |
