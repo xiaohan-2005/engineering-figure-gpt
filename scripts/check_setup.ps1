@@ -32,6 +32,7 @@ $required = @(
     "agents/openai.yaml",
     "scripts/efg.py",
     "scripts/generate_image.py",
+    "scripts/image_model_policy.py",
     "scripts/codex_provider_config.py",
     "scripts/build_engineering_figure_prompt.py",
     "scripts/build_image_edit_prompt.py",
