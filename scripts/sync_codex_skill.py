@@ -12,12 +12,14 @@ DEFAULT_TARGET = Path.home() / ".codex" / "skills" / "engineering-figure-gpt"
 ALLOW = ["SKILL.md", "LICENSE", "agents", "assets", "references", "schemas", "scripts", "templates", "secrets"]
 RUNTIME_SCRIPT_ALLOW = {
     "build_engineering_figure_prompt.py",
+    "build_image_edit_prompt.py",
     "build_plot_spec.py",
     "check_setup.ps1",
     "codex_provider_config.py",
     "efg.py",
     "generate_image.py",
     "plot_publication_figure.py",
+    "verify_image_output.py",
     "wizard.ps1",
 }
 
