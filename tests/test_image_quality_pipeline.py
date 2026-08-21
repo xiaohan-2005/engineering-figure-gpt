@@ -91,6 +91,41 @@ def test_efg_edit_dry_run_preserves_legal_source_canvas(tmp_path):
     assert "Preserving source canvas" in proc.stderr
 
 
+def test_efg_mask_edit_dry_run_adds_spatial_preservation_contract(tmp_path):
+    image = tmp_path / "source.png"
+    mask = tmp_path / "mask.png"
+    prompt_path = tmp_path / "resolved-edit-prompt.txt"
+    Image.new("RGBA", (1536, 1024), (255, 255, 255, 255)).save(image)
+    Image.new("RGBA", (1536, 1024), (0, 0, 0, 0)).save(mask)
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/efg.py"),
+            "edit",
+            str(image),
+            "Change only the masked label",
+            "--mode",
+            "correct",
+            "--mask",
+            str(mask),
+            "--save-prompt",
+            str(prompt_path),
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert prompt_path.is_file()
+    prompt = prompt_path.read_text(encoding="utf-8")
+    assert "outside the supplied edit mask" in prompt
+    assert '"mode": "edit"' in proc.stdout
+    assert '"mask": {' in proc.stdout
+    assert '"mask_has_alpha": true' in proc.stdout
+
+
 def test_efg_draft_profile_uses_low_quality(tmp_path):
     proc = subprocess.run(
         [
