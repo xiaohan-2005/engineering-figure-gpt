@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """Unified CLI for Engineering Figure GPT.
 
-The user-facing CLI keeps intermediate JSON and prompt files optional:
+User-facing workflows:
 
-- `efg image --figure-template ...` builds the final prompt and generates in one command.
-- `efg plot request.json` normalizes the request and renders in one command.
-- `efg render spec.json` remains available when a normalized plot spec already exists.
+- `efg image`: generate a conceptual figure with an injected publication-quality contract.
+- `efg edit`: correct, revise, restyle, or redraw an existing figure with preservation rules.
+- `efg verify-image`: verify objective raster metadata such as pixel dimensions and aspect ratio.
+- `efg plot`: normalize a concise quantitative request and render it deterministically.
+- `efg render`: render an already normalized plot spec.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,14 +22,49 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
+QUALITY_PATH = ROOT / "assets" / "prompt-templates" / "image-quality-contracts.json"
 
 
 def run(parts: list[str]) -> int:
     return subprocess.call([sys.executable, *parts], cwd=ROOT)
 
 
-def add_image_runtime_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--input-image", action="append", default=[], help="Input image for editing; may be repeated.")
+def contains_chinese(text: str) -> bool:
+    return bool(re.search(r"[\u3400-\u4dbf\u4e00-\u9fff]", text))
+
+
+def load_quality_contract(profile: str, lang: str) -> str:
+    data = json.loads(QUALITY_PATH.read_text(encoding="utf-8"))
+    if profile not in data or lang not in data[profile]:
+        raise SystemExit(f"Missing image quality contract: {profile}/{lang}")
+    return str(data[profile][lang]).strip()
+
+
+def resolve_quality_profile(args: argparse.Namespace) -> str:
+    explicit = getattr(args, "quality_profile", None)
+    if explicit:
+        return explicit
+    if getattr(args, "final", False) or getattr(args, "highres", False):
+        return "final"
+    return "paper"
+
+
+def build_raw_image_prompt(text: str, lang: str | None, style_note: str | None, profile: str) -> str:
+    resolved_lang = lang or ("zh" if contains_chinese(text) else "en")
+    if resolved_lang == "zh":
+        prompt = f"{text.strip()}\n\n论文图像质量约束：\n{load_quality_contract(profile, 'zh')}"
+        if style_note:
+            prompt += f"\n\n附加风格要求：\n{style_note.strip()}"
+        return prompt
+    prompt = f"{text.strip()}\n\nPublication Image Quality Contract:\n{load_quality_contract(profile, 'en')}"
+    if style_note:
+        prompt += f"\n\nAdditional style requirements:\n{style_note.strip()}"
+    return prompt
+
+
+def add_image_runtime_options(parser: argparse.ArgumentParser, include_input_images: bool = True) -> None:
+    if include_input_images:
+        parser.add_argument("--input-image", action="append", default=[], help="Input image for editing; may be repeated.")
     parser.add_argument("--model")
     parser.add_argument("--base-url")
     parser.add_argument("--allow-third-party", action="store_true")
@@ -84,8 +123,24 @@ def image_runtime_args(args: argparse.Namespace) -> list[str]:
     return parts
 
 
+def resolve_prompt_output_path(save_prompt: str | None, temp_dir: str) -> Path:
+    if save_prompt:
+        path = Path(save_prompt)
+        if not path.is_absolute():
+            path = ROOT / path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+    return Path(temp_dir) / "final-prompt.txt"
+
+
 def cmd_prompt(args: argparse.Namespace) -> int:
-    cmd = [str(SCRIPTS / "build_engineering_figure_prompt.py"), "--figure-template", args.figure_template]
+    cmd = [
+        str(SCRIPTS / "build_engineering_figure_prompt.py"),
+        "--figure-template",
+        args.figure_template,
+        "--quality-profile",
+        args.quality_profile,
+    ]
     if args.lang:
         cmd += ["--lang", args.lang]
     if args.style_note:
@@ -102,49 +157,109 @@ def cmd_prompt(args: argparse.Namespace) -> int:
 def cmd_image(args: argparse.Namespace) -> int:
     generator = str(SCRIPTS / "generate_image.py")
     runtime = image_runtime_args(args)
+    profile = resolve_quality_profile(args)
 
-    if not args.figure_template:
-        if args.background_file:
-            return run([generator, "--prompt-file", args.background_file, *runtime])
-        if not args.background:
-            print("Provide prompt/background text, --background-file, or --figure-template.", file=sys.stderr)
+    with tempfile.TemporaryDirectory(prefix="efg-prompt-") as tmp:
+        prompt_path = resolve_prompt_output_path(args.save_prompt, tmp)
+
+        if args.figure_template:
+            if not args.background and not args.background_file:
+                print("Template image mode requires background text or --background-file.", file=sys.stderr)
+                return 2
+            build = [
+                str(SCRIPTS / "build_engineering_figure_prompt.py"),
+                "--figure-template",
+                args.figure_template,
+                "--quality-profile",
+                profile,
+                "--out",
+                str(prompt_path),
+            ]
+            if args.lang:
+                build += ["--lang", args.lang]
+            if args.style_note:
+                build += ["--style-note", args.style_note]
+            if args.background_file:
+                build += ["--background-file", args.background_file]
+            if args.background:
+                build += [args.background]
+            code = run(build)
+            if code:
+                return code
+        else:
+            raw = args.background
+            if args.background_file:
+                raw = Path(args.background_file).read_text(encoding="utf-8")
+            if not raw:
+                print("Provide prompt/background text, --background-file, or --figure-template.", file=sys.stderr)
+                return 2
+            prompt_path.write_text(
+                build_raw_image_prompt(raw, args.lang, args.style_note, profile) + "\n",
+                encoding="utf-8",
+            )
+
+        return run([generator, "--prompt-file", str(prompt_path), *runtime])
+
+
+def cmd_edit(args: argparse.Namespace) -> int:
+    generator = str(SCRIPTS / "generate_image.py")
+    profile = resolve_quality_profile(args)
+    runtime = image_runtime_args(args)
+
+    images = [args.input_image, *(args.reference_image or [])]
+    for image in images:
+        if not Path(image).is_file():
+            print(f"Input/reference image not found: {image}", file=sys.stderr)
             return 2
-        return run([generator, args.background, *runtime])
 
-    if not args.background and not args.background_file:
-        print("Template image mode requires background text or --background-file.", file=sys.stderr)
-        return 2
-
-    def execute_with_prompt_path(prompt_path: Path) -> int:
+    with tempfile.TemporaryDirectory(prefix="efg-edit-") as tmp:
+        prompt_path = resolve_prompt_output_path(args.save_prompt, tmp)
         build = [
-            str(SCRIPTS / "build_engineering_figure_prompt.py"),
-            "--figure-template",
-            args.figure_template,
+            str(SCRIPTS / "build_image_edit_prompt.py"),
+            args.instruction,
+            "--mode",
+            args.mode,
+            "--quality-profile",
+            profile,
             "--out",
             str(prompt_path),
         ]
         if args.lang:
             build += ["--lang", args.lang]
-        if args.style_note:
-            build += ["--style-note", args.style_note]
-        if args.background_file:
-            build += ["--background-file", args.background_file]
-        if args.background:
-            build += [args.background]
+        for value in args.preserve:
+            build += ["--preserve", value]
+        for value in args.allow_change:
+            build += ["--allow-change", value]
         code = run(build)
         if code:
             return code
-        return run([generator, "--prompt-file", str(prompt_path), *runtime])
 
-    if args.save_prompt:
-        prompt_path = Path(args.save_prompt)
-        if not prompt_path.is_absolute():
-            prompt_path = ROOT / prompt_path
-        prompt_path.parent.mkdir(parents=True, exist_ok=True)
-        return execute_with_prompt_path(prompt_path)
+        image_args: list[str] = []
+        for image in images:
+            image_args += ["--input-image", image]
+        if args.input_fidelity is None:
+            image_args += ["--input-fidelity", "high"]
+        return run([generator, "--prompt-file", str(prompt_path), *image_args, *runtime])
 
-    with tempfile.TemporaryDirectory(prefix="efg-prompt-") as tmp:
-        return execute_with_prompt_path(Path(tmp) / "final-prompt.txt")
+
+def cmd_verify_image(args: argparse.Namespace) -> int:
+    command = [str(SCRIPTS / "verify_image_output.py"), *args.images]
+    scalar = (
+        ("expected_size", "--expected-size"),
+        ("min_width", "--min-width"),
+        ("min_height", "--min-height"),
+        ("min_megapixels", "--min-megapixels"),
+        ("target_aspect", "--target-aspect"),
+        ("aspect_tolerance", "--aspect-tolerance"),
+        ("require_format", "--require-format"),
+    )
+    for attr, flag in scalar:
+        value = getattr(args, attr, None)
+        if value is not None:
+            command += [flag, str(value)]
+    if args.json:
+        command.append("--json")
+    return run(command)
 
 
 def cmd_build_plot(args: argparse.Namespace) -> int:
@@ -200,16 +315,34 @@ def cmd_check(_: argparse.Namespace) -> int:
         "SKILL.md",
         "assets/prompt-templates/engineering-figure-templates.json",
         "assets/prompt-templates/mathematical-modeling-templates.json",
+        "assets/prompt-templates/image-quality-contracts.json",
         "scripts/build_engineering_figure_prompt.py",
+        "scripts/build_image_edit_prompt.py",
         "scripts/build_plot_spec.py",
         "scripts/plot_publication_figure.py",
         "scripts/generate_image.py",
+        "scripts/verify_image_output.py",
     ]
     missing = [item for item in required if not (ROOT / item).is_file()]
     if missing:
         print("Missing runtime files:", *missing, sep="\n  - ", file=sys.stderr)
         return 1
-    code = run([str(SCRIPTS / "build_engineering_figure_prompt.py"), "--figure-template", "system-architecture", "offline smoke test"])
+    code = run([
+        str(SCRIPTS / "build_engineering_figure_prompt.py"),
+        "--figure-template",
+        "system-architecture",
+        "--quality-profile",
+        "paper",
+        "offline smoke test",
+    ])
+    if code:
+        return code
+    code = run([
+        str(SCRIPTS / "build_image_edit_prompt.py"),
+        "fix one label only",
+        "--mode",
+        "correct",
+    ])
     if code:
         return code
     return run([str(SCRIPTS / "generate_image.py"), "offline smoke test", "--dry-run"])
@@ -225,18 +358,45 @@ def build_parser() -> argparse.ArgumentParser:
     prompt.add_argument("--figure-template", required=True)
     prompt.add_argument("--lang", choices=("en", "zh"))
     prompt.add_argument("--style-note")
+    prompt.add_argument("--quality-profile", choices=("draft", "paper", "final"), default="paper")
     prompt.add_argument("--out")
     prompt.set_defaults(func=cmd_prompt)
 
-    image = sub.add_parser("image", help="Build an optional figure-template prompt and generate/edit in one command.")
-    image.add_argument("background", nargs="?", help="Raw final prompt, or scientific background when --figure-template is used.")
+    image = sub.add_parser("image", help="Generate a conceptual figure with a publication image-quality contract.")
+    image.add_argument("background", nargs="?", help="Raw prompt/background, or scientific background when --figure-template is used.")
     image.add_argument("--background-file", help="UTF-8 prompt/background file.")
     image.add_argument("--figure-template")
     image.add_argument("--lang", choices=("en", "zh"))
     image.add_argument("--style-note")
-    image.add_argument("--save-prompt", help="Preserve the resolved final prompt for reproducibility.")
+    image.add_argument("--quality-profile", choices=("draft", "paper", "final"), default=None)
+    image.add_argument("--save-prompt", help="Preserve the resolved prompt including the quality contract.")
     add_image_runtime_options(image)
     image.set_defaults(func=cmd_image)
+
+    edit = sub.add_parser("edit", help="Edit an existing research figure with explicit preservation rules.")
+    edit.add_argument("input_image", help="Primary raster figure to modify.")
+    edit.add_argument("instruction", help="Exact requested change.")
+    edit.add_argument("--mode", choices=("correct", "revise", "restyle", "redraw"), default="correct")
+    edit.add_argument("--reference-image", action="append", default=[], help="Additional reference image; may be repeated.")
+    edit.add_argument("--preserve", action="append", default=[], help="Additional item/relationship/style element that must remain unchanged.")
+    edit.add_argument("--allow-change", action="append", default=[], help="Explicitly allow a region/property to change.")
+    edit.add_argument("--lang", choices=("en", "zh"))
+    edit.add_argument("--quality-profile", choices=("draft", "paper", "final"), default=None)
+    edit.add_argument("--save-prompt", help="Preserve the resolved edit contract/prompt.")
+    add_image_runtime_options(edit, include_input_images=False)
+    edit.set_defaults(func=cmd_edit)
+
+    verify_image = sub.add_parser("verify-image", help="Verify objective pixel/format/aspect constraints for raster outputs.")
+    verify_image.add_argument("images", nargs="+")
+    verify_image.add_argument("--expected-size")
+    verify_image.add_argument("--min-width", type=int)
+    verify_image.add_argument("--min-height", type=int)
+    verify_image.add_argument("--min-megapixels", type=float)
+    verify_image.add_argument("--target-aspect", type=float)
+    verify_image.add_argument("--aspect-tolerance", type=float, default=0.03)
+    verify_image.add_argument("--require-format", choices=("png", "jpeg", "webp"))
+    verify_image.add_argument("--json", action="store_true")
+    verify_image.set_defaults(func=cmd_verify_image)
 
     build = sub.add_parser("build-plot", help="Normalize a concise plot request JSON only.")
     build.add_argument("request_file")
