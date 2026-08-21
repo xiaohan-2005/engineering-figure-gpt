@@ -51,8 +51,8 @@ foreach ($rel in $required) {
 }
 
 if (Get-Command python -ErrorAction SilentlyContinue) {
-    python -c "from PIL import Image; print(Image.__version__)" *> $null
-    if ($LASTEXITCODE -eq 0) { Status "PASS" "Pillow available for verify-image" }
+    $pillowVersion = python -c "import PIL; print(PIL.__version__)" 2>$null
+    if ($LASTEXITCODE -eq 0 -and $pillowVersion) { Status "PASS" "Pillow available for verify-image: $pillowVersion" }
     else { Status "FAIL" "Pillow missing; install requirements.txt so verify-image can inspect raster outputs"; $failed = $true }
 }
 
