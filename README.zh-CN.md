@@ -4,27 +4,245 @@
 
 一个面向 **Codex + GPT** 的科研配图 Skill，重点覆盖工程、计算机、AI、数据科学、电子信息和数学建模论文。
 
-它把科研配图拆成三种模式：
+现在不再只是“让 GPT 画一张图”，而是把图片生产拆成：
 
-- `image`：系统架构、算法流程、图形摘要、数学建模框架、机制图、重绘与图片编辑；
+```text
+科学内容约束
++
+论文图像质量约束
++
+用户风格要求
++
+修改保留约束（编辑已有图片时）
+```
+
+并提供四类工作流：
+
+- `image`：生成新的系统架构、算法流程、图形摘要、数学建模框架、机制图；
+- `edit`：对已有科研图执行 `correct / revise / restyle / redraw`；
 - `plot`：精确柱状图、趋势图、热力图、散点图、敏感性/稳健性、消融实验、benchmark、多面板定量图；
 - `mixed`：定量部分本地精确绘制，概念部分使用 GPT 图像生成。
 
-核心原则：**数值、坐标轴、误差、公式和 benchmark 几何关系不能为了“好看”被生图模型改写。**
+核心原则：**数值、坐标轴、误差、公式和 benchmark 几何关系不能为了“好看”被生图模型改写；一张图 API 返回成功，也不代表它已经达到论文可用质量。**
 
-[English](README.en.md) · [安装说明](INSTALL.md) · [Showcase](docs/showcase.md)
+[English](README.en.md) · [主 README](README.md) · [安装说明](INSTALL.md) · [Showcase](docs/showcase.md)
 
-## 适配你这种用法：CC Switch → 命令行 Codex → Skill
+## Image Pipeline v2：把“清晰度和版式”变成固定约束
 
-如果你使用 CC Switch 配好 API，然后在 PowerShell/终端里直接运行：
+过去每个模板主要负责“画什么”，容易出现：
+
+- 标签太小；
+- 模块挤在一起；
+- 箭头穿文字；
+- 边缘裁切；
+- 图看起来很复杂，但细节其实是伪造小字；
+- full screen 看着还行，缩进论文就看不清。
+
+现在单独增加：
+
+```text
+assets/prompt-templates/image-quality-contracts.json
+```
+
+提供三档：
+
+- `draft`：结构探索；
+- `paper`：默认论文级约束；
+- `final`：最终导出级约束。
+
+`paper / final` 会固定注入这些要求：
+
+- 白色或近白色画布；
+- 一种明确主阅读方向；
+- 四周安全边距，模块、文字、箭头端点不能贴边或被裁切；
+- 使用大而干净的文字区域；
+- 强文字/背景对比；
+- 核心标签在约 50% 原始尺寸或论文单栏宽度下仍可辨认；
+- 宁可减少标签并放大，也不要堆大量微小文字；
+- 箭头和边框清晰、线宽一致、端点明确；
+- 重复模块严格对齐、间距稳定；
+- 低到中等饱和度科研配色，颜色语义前后一致；
+- 避免模糊、重影、噪声纹理、伪技术小字、强 3D、电影光影和海报渐变；
+- 不得为了“显得专业”虚构模块、公式、数值、接口或说明。
+
+详见：
+
+- [Image Quality Contract](references/image-quality-contract.md)
+- [Publication Figure Design](references/publication-figure-design.md)
+- [Visual QA](references/visual-qa.md)
+
+## Image Mode：生成新图
+
+推荐统一从 `efg image` 进入，因为它会自动把质量合同叠加到最终 Prompt。
+
+```bash
+python scripts/efg.py image \
+  "一个包含 OCR、Embedding、向量检索、Rerank 和答案生成的 RAG 系统" \
+  --figure-template system-architecture \
+  --quality-profile paper \
+  --lang zh \
+  --save-prompt output/final-prompt.txt \
+  --dry-run
+```
+
+去掉 `--dry-run` 才会真正调用图片 API。
+
+即使你不用模板、直接给完整生图要求，只要经过 `efg image`，也会叠加所选的质量合同。
+
+## Edit Mode：真正把“修改图片”做成一等功能
+
+以前底层虽然有 `/images/edits` 和 `--input-image`，但没有明确告诉 Skill：
+
+> 哪些必须保持不变？到底是修一个字，还是整张重画？
+
+现在正式增加：
+
+```bash
+python scripts/efg.py edit figure.png \
+  "只把 Encoder 改成 Cross-Attention Encoder，其他内容不要变化" \
+  --mode correct \
+  --preserve "所有箭头端点" \
+  --save-prompt output/edit-prompt.txt \
+  --dry-run
+```
+
+### 四种修改模式
+
+| 模式 | 含义 |
+|---|---|
+| `correct` | 最小范围修正。错字、一个箭头、轻微裁切、局部对齐等 |
+| `revise` | 修改局部科学内容或结构，但未涉及区域保持稳定 |
+| `restyle` | 只改视觉风格，科学内容、标签和关系锁定 |
+| `redraw` | 基于参考图重新构建更干净版本，可优化布局，但科学含义不能变 |
+
+`correct` 默认要求保持：
+
+- 画布和比例；
+- 模块位置；
+- 未涉及标签；
+- 箭头与科学关系；
+- 配色；
+- 字体风格；
+- 图标/形状语言。
+
+可以重复增加：
+
+```bash
+--preserve "模块位置"
+--preserve "除目标标签外的所有文字"
+--allow-change "Encoder 标签文字"
+```
+
+如果需要额外风格参考图：
+
+```bash
+--reference-image style-reference.png
+```
+
+主输入图始终是科学内容基准，额外参考图不能静默覆盖科学内容。
+
+Edit 默认使用 `input_fidelity=high`，除非用户显式覆盖。
+
+详见 [Edit Mode](references/edit-mode.md)。
+
+## Visual QA：不是“看起来不错”就结束
+
+最终概念图按顺序检查：
+
+1. **科学真实性**：模块、关系、箭头、术语是否正确，有没有虚构；
+2. **文字完整性**：错字、乱码、重复字、缺字、裁切、伪造小字；
+3. **布局完整性**：有没有重叠、贴边、裁切、错误留白、主路径不明确；
+4. **箭头与线条**：端点是否明确、是否穿字、是否断裂/重影；
+5. **颜色与对比**：颜色语义是否稳定，小字是否落在深色填充上；
+6. **栅格清晰度**：原尺寸和约 50% 尺寸都检查，拒绝模糊、重影、微小字；
+7. **修改保留检查**：如果是 edit，比较前后图片，确认允许范围之外没有无关变化。
+
+失败后不要默认整张重画：
+
+```text
+错字 / 错箭头 / 小范围裁切 -> correct
+内容变化                  -> revise
+只改风格                  -> restyle
+整体布局不可用             -> redraw 或重新生成
+```
+
+详见 [Visual QA](references/visual-qa.md)。
+
+## 清晰度：Highres Model 和实际像素不是一回事
+
+普通图片模型：
+
+```text
+OPENAI_IMAGE_MODEL -> gpt-image-2
+```
+
+最终质量请求：
+
+```text
+OPENAI_IMAGE_HIGHRES_MODEL
+```
+
+或用户显式传入图片 `--model`。
+
+```bash
+python scripts/efg.py image \
+  "技术背景" \
+  --figure-template graphical-abstract \
+  --final
+```
+
+如果要求 `--final / --highres` 但没有配置 final image model，CLI 会 fail-closed，不会偷偷换成普通模型。
+
+但需要特别注意：
+
+> **使用 highres/final 模型，不等于 API 一定返回了某个像素尺寸。**
+
+画布尺寸需要单独请求，例如：
+
+```bash
+--size 1536x1024
+```
+
+而返回文件要实际检查：
+
+```bash
+python scripts/efg.py verify-image output/figure.png \
+  --expected-size 1536x1024 \
+  --require-format png
+```
+
+也可以设置最低验收：
+
+```bash
+python scripts/efg.py verify-image output/figure.png \
+  --min-width 1500 \
+  --min-height 1000 \
+  --min-megapixels 1.5
+```
+
+而且现在通过 `efg image / efg edit` 发起的**真实请求会自动对返回栅格做基础验收**：
+
+- 文件必须可打开；
+- 返回格式必须符合请求；
+- 请求了具体尺寸时，实际尺寸必须一致。
+
+如果中转站忽略 `--size`，统一 CLI 会报错，而不是把小图当成高清图继续交付。
+
+像素检查只能证明尺寸，不代表文字一定清楚，所以仍必须执行 Visual QA。
+
+详见 [High-resolution Policy](references/highres-policy.md)。
+
+## 适配 CC Switch → 命令行 Codex → Skill
+
+如果你使用 CC Switch 配好 API，然后在终端运行：
 
 ```powershell
 codex
 ```
 
-现在**不需要再给这个 Skill 配第二套 Base URL 和 API Key**。
+不需要再给 Skill 配第二套 Base URL 和 Key。
 
-运行链路是：
+链路：
 
 ```text
 CC Switch
@@ -36,10 +254,7 @@ codex
 engineering-figure-gpt
 ```
 
-Portable Image CLI 会优先读取当前 Codex live provider，包括常见的：
-
-- `config.toml` 中的 `model_provider`、`base_url`、`env_key`、`experimental_bearer_token`；
-- `auth.json` 中的 `OPENAI_API_KEY`。
+Portable Image CLI 优先读取当前 Codex live provider。
 
 连接解析顺序：
 
@@ -53,81 +268,37 @@ OPENAI_* 环境变量兼容层
 OpenAI 官方默认值
 ```
 
-查看当前 Skill 能识别到的 Codex Provider：
+查看当前 Provider（不会打印真实 Key）：
 
 ```powershell
 python scripts/codex_provider_config.py
 ```
 
-这里只显示 Provider、Base URL、wire API、是否找到 Key 等安全信息，**不会打印真实 Key**。
-
-需要特别区分：**Codex 文本接口可用，不代表这个中转站一定支持图片接口。**
-
-因此第一次建议运行：
+第一次使用图片能力建议：
 
 ```powershell
 python scripts/efg.py provider-check
 ```
 
-在 CC Switch 已选中 Provider 的情况下，这里不需要再写 `--base-url` 或 `--allow-third-party`。
+Codex 文本接口可用，不代表 `/images/generations` 和 `/images/edits` 一定存在。
 
-详细说明见 [Codex CLI + CC Switch Integration](references/codex-cc-switch.md)。
+详见 [Codex CLI + CC Switch Integration](references/codex-cc-switch.md)。
 
-## Image Mode：一条命令完成 Prompt → Image
+## 手动覆盖其他中转站
 
-在 Codex 内如果已有可用的内置 GPT 图像能力，可以直接使用。为了可复现和命令行运行，仓库同时提供 GPT Image-compatible CLI。
-
-图片模型与 Codex 的文本/代码模型分开解析。也就是说，即使 `config.toml` 中 Codex 当前使用的是某个 coding model，图片模式也不会拿它去调用 Images API。
-
-普通图片模型默认：
-
-```text
-OPENAI_IMAGE_MODEL → gpt-image-2
-```
-
-直接运行：
-
-```bash
-python scripts/efg.py image \
-  "一个包含 OCR、Embedding、向量检索、Rerank 和答案生成的 RAG 系统" \
-  --figure-template system-architecture \
-  --lang zh \
-  --save-prompt output/final-prompt.txt \
-  --dry-run
-```
-
-去掉 `--dry-run` 才会真正发起图片请求。
-
-如果使用的是 CC Switch，dry-run 中应该能看到类似：
-
-```text
-connection_source: codex-config
-codex_provider: <当前 Provider>
-```
-
-## 手动指定其他中转站
-
-如果你不是复用 CC Switch 当前 Provider，而是**临时手动覆盖另一个 URL**，仍然要求显式确认信任：
+如果不是复用当前 CC Switch Provider，而是临时指定另一个 URL，需要显式信任：
 
 ```bash
 python scripts/efg.py image \
   "技术背景" \
   --figure-template system-architecture \
-  --base-url https://你的另一个中转站/v1 \
+  --base-url https://你的中转站/v1 \
   --allow-third-party
 ```
 
-这条安全规则是为了防止 API Key 或编辑图片被静默发送给陌生服务。
+因为该中转站可能接收到 API Key 和用于编辑的图片。
 
-### 中转站兼容检查
-
-复用当前 CC Switch/Codex Provider：
-
-```bash
-python scripts/efg.py provider-check
-```
-
-手动测试另一个 Relay：
+检查 relay：
 
 ```bash
 python scripts/efg.py provider-check \
@@ -135,47 +306,13 @@ python scripts/efg.py provider-check \
   --allow-third-party
 ```
 
-它会检查基础 URL、模型列表端点和 `/images/generations`、`/images/edits` 的可达性信号。它不会产生图片费用，但也不能保证所有中转站都完全实现每个 OpenAI Images 参数。
+Provider Check 只能检查基础 route/model 暴露，不能保证所有 `size / quality / input_fidelity / edit` 参数都完全兼容，所以最终仍应看真实输出。
 
-## Final / High-resolution 路由
+## Plot Mode：精确数据图保持本地
 
-普通生图使用：
+自然语言是用户入口，JSON 是内部执行契约。
 
-```text
-OPENAI_IMAGE_MODEL
-```
-
-最终稿/高分辨率使用：
-
-```text
-OPENAI_IMAGE_HIGHRES_MODEL
-```
-
-示例：
-
-```powershell
-$env:OPENAI_IMAGE_MODEL = "gpt-image-2"
-$env:OPENAI_IMAGE_HIGHRES_MODEL = "<你的 Provider 实际提供的最终质量图片模型>"
-```
-
-调用：
-
-```bash
-python scripts/efg.py image \
-  "技术背景" \
-  --figure-template graphical-abstract \
-  --final
-```
-
-如果用户要求 `--final` / `--highres`，但没有配置最终质量模型，也没有显式传图片 `--model`，CLI 会直接停止，**不会偷偷降级模型、画质、尺寸或 Provider**。
-
-详见 [High-resolution Policy](references/highres-policy.md)。
-
-## Plot Mode：一条命令完成 Request → Spec → Figure
-
-用户面对的是自然语言，JSON 只是内部执行契约。
-
-Plot Engine 支持：
+支持：
 
 - grouped bar / error bar / 数值标注
 - trend curve / uncertainty shadow
@@ -185,7 +322,7 @@ Plot Engine 支持：
 - empty panel
 - multi-panel layout
 
-现在推荐直接：
+推荐：
 
 ```bash
 python scripts/efg.py plot request.json \
@@ -194,7 +331,7 @@ python scripts/efg.py plot request.json \
   --formats png pdf svg
 ```
 
-内部自动完成：
+内部：
 
 ```text
 Plot Request (`kind`)
@@ -216,9 +353,9 @@ python scripts/efg.py render output/spec.json --out-path output/figure --formats
 
 复杂图参见 [Publication Plot API](references/publication-plot-api.md) 和 [Chart Patterns](references/publication-chart-patterns.md)。
 
-## 数学建模已经升级为独立 Domain Pack
+## 数学建模 Domain Pack
 
-现在不是只在 `SKILL.md` 里写“支持数学建模”，而是新增独立模板包：
+独立模板包：
 
 ```text
 assets/prompt-templates/mathematical-modeling-templates.json
@@ -242,13 +379,13 @@ assets/prompt-templates/mathematical-modeling-templates.json
 - `decision-framework`
 - `full-modeling-pipeline`
 
-加上原来的工程模板后，可以直接查看全部模板：
+查看全部模板：
 
 ```bash
 python scripts/build_engineering_figure_prompt.py --list-templates
 ```
 
-数学建模规则也已经扩充到独立的 [Mathematical Modeling Guidance](references/mathematical-modeling.md)，重点约束：
+数学建模约束：
 
 - Q1/Q2/Q3 信息传递不能乱画；
 - 模型名称、变量、符号、单位、约束必须忠实；
@@ -256,11 +393,13 @@ python scripts/build_engineering_figure_prompt.py --list-templates
 - 预测曲线、Pareto 前沿、敏感性指数、稳健性曲线、混淆矩阵、benchmark 等全部保持本地精确绘制；
 - 不得虚构权重、系数、最优值、敏感性排名和评价结果。
 
+详见 [Mathematical Modeling Guidance](references/mathematical-modeling.md)。
+
 ## Editable Figure Handoff
 
-科研图最终常常还需要一次人工可编辑排版。
+科研图最终常常还需要人工可编辑排版。
 
-现在增加 [Editable Figure Handoff](references/editable-figure-handoff.md)，推荐保留：
+推荐保留：
 
 ```text
 brief.md
@@ -270,7 +409,7 @@ verification.md
 editable-handoff.md
 ```
 
-定量图则额外保留：
+定量图额外保留：
 
 ```text
 request.json
@@ -279,7 +418,9 @@ output.svg
 output.pdf
 ```
 
-这样后续可以在 PowerPoint / Illustrator / Inkscape / Figma 中统一中文字体、公式、箭头和版面，而不会破坏精确数据图。
+后续可在 PowerPoint / Illustrator / Inkscape / Figma 中统一中文字体、公式、箭头和版面，同时保护精确数据图。
+
+详见 [Editable Figure Handoff](references/editable-figure-handoff.md)。
 
 ## 安装
 
@@ -294,7 +435,25 @@ Runtime 安装到：
 ~/.codex/skills/engineering-figure-gpt
 ```
 
-仓库中的 `docs/`、`examples/`、`tests/`、GitHub CI 不会全部塞进 Codex Runtime。
+安装时会安装 `Pillow`，用于检查返回栅格尺寸/格式。
+
+默认安装验收现在包含三条离线链路：
+
+```text
+Plot Request -> Spec -> Renderer -> PNG
+Edit Contract -> preservation-first dry-run prompt
+Raster Fixture -> verify-image size/format gate
+```
+
+不会产生图片 API 费用。
+
+如果要显式测试一次真实 GPT Image：
+
+```powershell
+& "$HOME/engineering-figure-gpt/scripts/install_and_test.ps1" -TestLiveImage
+```
+
+Live test 会通过 `efg image` 调用真实图片接口，并检查 API 返回图片是否真的是所请求的尺寸/格式。
 
 安装检查：
 
@@ -308,47 +467,45 @@ Runtime 安装到：
 & "$HOME/.codex/skills/engineering-figure-gpt/scripts/wizard.ps1"
 ```
 
-Wizard 支持：
+Wizard 现在支持：
 
-- 查看全部工程/数学建模模板；
-- 一步完成 Prompt → Image；
-- 复用 Codex / CC Switch 当前 Provider；
-- 手动官方 OpenAI / 自定义可信中转站；
+- Prompt + quality profile；
+- 新图生成；
+- `correct / revise / restyle / redraw` 图片修改；
+- 栅格尺寸/格式验收；
+- 默认复用 Codex / CC Switch Provider；
+- 手动可信 relay；
 - Provider compatibility probe；
-- `--final` 高质量路由；
-- 一步完成 Plot Request → Spec → Figure。
+- Plot Request -> Spec -> Figure；
+- Offline runtime check。
 
 ## Unified CLI
 
 ```bash
-# 仅生成 Prompt
-python scripts/efg.py prompt --figure-template problem-analysis --lang zh "建模背景"
+# 仅生成 Prompt + paper 质量合同
+python scripts/efg.py prompt --figure-template problem-analysis --quality-profile paper --lang zh "建模背景"
 
-# Prompt + 生图一步完成；默认优先复用 Codex/CC Switch Provider
+# 新图 dry-run
 python scripts/efg.py image "建模背景" --figure-template full-modeling-pipeline --lang zh --dry-run
 
-# 检查当前 Codex/CC Switch Provider 的图片兼容性，不生成图片
+# 小范围修改 dry-run
+python scripts/efg.py edit figure.png "只修正第二个模块的错别字" --mode correct --dry-run
+
+# 检查真实返回栅格
+python scripts/efg.py verify-image output/figure.png --expected-size 1536x1024 --require-format png
+
+# 当前 Provider 图片兼容性
 python scripts/efg.py provider-check
 
-# Plot Request -> Spec -> Figure 一步完成
+# 精确 Plot
 python scripts/efg.py plot request.json --spec-out output/spec.json --out-path output/figure --formats png pdf svg
 
-# 已有 Spec 时直接渲染
+# 已有 Spec
 python scripts/efg.py render output/spec.json --out-path output/figure --formats png pdf svg
 
 # 离线 Runtime 检查
 python scripts/efg.py check
 ```
-
-## 安装后的真实验收
-
-默认 `install_and_test.ps1` 会真实执行本地 Plot E2E：
-
-```text
-request → normalized spec → renderer → non-empty PNG
-```
-
-这一步不会产生图片 API 费用。真正的 GPT Image 请求仍然是显式 opt-in。
 
 ## CI 与质量检查
 
@@ -358,45 +515,39 @@ GitHub Actions 当前检查：
 - Skill 元数据和 Runtime 必需文件
 - UTF-8 / 中文乱码
 - 工程 + 数学建模 Prompt Pack
+- 独立 Image Quality Contract Pack
+- Prompt 中是否实际注入质量合同
+- `correct` 是否保持 preservation-first 行为
+- `verify-image` 尺寸/格式成功与失败路径
 - Markdown 链接和图片路径
 - Figure Brief / Plot Request / Plot Spec 数据契约
 - GPT Image generation/edit 请求构造
 - Codex / CC Switch provider 解析与 secret-redaction
 - 官方地址和手动第三方中转站信任规则
-- malformed URL / embedded credential / model safety
 - final/high-resolution fail-closed 路由
 - HTTP error / timeout / malformed response / empty output
 - 本地 Plot E2E
-- Runtime pruning
-- Runtime token budget
+- Runtime pruning / token budget
 - 离线 CLI smoke test
 
 ## Showcase 状态
 
-当前 [Showcase](docs/showcase.md) 中的概念 SVG 仍然明确标注为 **layout preview**，不会假装成真实 GPT 输出。
+当前概念 SVG 仍然明确标注为 **layout preview**，不会冒充真实 GPT 输出。
 
-真正的 Showcase 必须保存完整证据链：
+现在应先稳定 Image Quality / Edit / Visual QA 链路，再批量制作真实 GPT Showcase。
+
+真正的概念图 Showcase 应保存：
 
 ```text
 Figure Brief
     ↓
-Final Prompt
+Domain Prompt + Quality Contract
     ↓
 Real GPT Output
     ↓
-Verification
-```
-
-定量图则保存：
-
-```text
-Plot Request
+Visual QA
     ↓
-Normalized Plot Spec
-    ↓
-Renderer
-    ↓
-Real Output
+必要时 Constrained Edit
     ↓
 Verification
 ```
@@ -404,14 +555,17 @@ Verification
 ## 设计原则
 
 1. 科研真实性优先于装饰。
-2. 数值图保持本地、精确、确定性。
-3. 自然语言是用户入口，JSON 是内部契约。
-4. GPT 只用在真正需要语义构图的地方。
-5. 中文科研和数学建模是一等场景。
-6. 当前 Codex/CC Switch Provider 可以直接复用；手动覆盖其他中转站仍需显式信任。
-7. 最终质量请求不得静默降级。
-8. Runtime 必须精简、可检查。
-9. 最终输出尽量保留可复现证据链和可编辑 handoff。
+2. 图片质量约束与领域内容模板分离。
+3. API 返回成功不等于论文图验收成功。
+4. 小问题优先局部修改，而不是整张重画。
+5. Highres Model 和实际像素尺寸分别验收。
+6. 数值图保持本地、精确、确定性。
+7. GPT 只用在真正需要语义构图的地方。
+8. 中文科研和数学建模是一等场景。
+9. 当前 Codex/CC Switch Provider 可以直接复用；手动覆盖其他 relay 仍需显式信任。
+10. 最终质量请求不得静默降级。
+11. Runtime 必须精简、可检查。
+12. 最终输出尽量保留可复现证据链和可编辑 handoff。
 
 ## License
 
