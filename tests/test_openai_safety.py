@@ -28,6 +28,10 @@ def args_for(base_url: str, model: str = "gpt-image-2", allow_third_party: bool 
         allow_third_party=allow_third_party,
         n=1,
         timeout=30,
+        size="1536x1024",
+        input_fidelity=None,
+        background=None,
+        _codex_trusted=False,
     )
 
 
@@ -73,6 +77,14 @@ def test_non_gpt_image_model_is_rejected():
     module = load_module()
     with pytest.raises(SystemExit, match="Only GPT Image model"):
         module.validate_target(args_for("https://api.openai.com/v1", model="other-model"))
+
+
+def test_gpt_image_2_transparent_background_is_rejected():
+    module = load_module()
+    args = args_for("https://api.openai.com/v1")
+    args.background = "transparent"
+    with pytest.raises(SystemExit, match="does not currently support transparent"):
+        module.validate_target(args)
 
 
 def test_default_model_resolution_is_gpt_image_2(monkeypatch):
@@ -126,6 +138,7 @@ def test_dry_run_does_not_require_api_key():
     assert '"mode": "generate"' in result.stdout
     assert '"third_party": false' in result.stdout
     assert '"final_quality_requested": false' in result.stdout
+    assert '"size": "1536x1024"' in result.stdout
 
 
 def test_relay_dry_run_works_with_environment_opt_in():
