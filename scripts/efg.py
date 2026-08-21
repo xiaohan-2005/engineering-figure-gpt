@@ -164,6 +164,7 @@ def image_runtime_args(args: argparse.Namespace, *, include_input_images: bool =
         ("output_format", "--output-format"),
         ("image_background", "--background"),
         ("input_fidelity", "--input-fidelity"),
+        ("mask", "--mask"),
         ("n", "--n"),
         ("out_dir", "--out-dir"),
         ("prefix", "--prefix"),
@@ -300,6 +301,9 @@ def cmd_edit(args: argparse.Namespace) -> int:
         if not Path(image).is_file():
             print(f"Input/reference image not found: {image}", file=sys.stderr)
             return 2
+    if args.mask and not Path(args.mask).is_file():
+        print(f"Edit mask not found: {args.mask}", file=sys.stderr)
+        return 2
     canvas_code = resolve_edit_canvas(args)
     if canvas_code:
         return canvas_code
@@ -315,7 +319,12 @@ def cmd_edit(args: argparse.Namespace) -> int:
         ]
         if args.lang:
             build += ["--lang", args.lang]
-        for value in args.preserve:
+        preserve_values = list(args.preserve)
+        if args.mask:
+            preserve_values.append(
+                "all content outside the supplied edit mask; allow only minimal blending needed at the mask boundary"
+            )
+        for value in preserve_values:
             build += ["--preserve", value]
         for value in args.allow_change:
             build += ["--allow-change", value]
@@ -434,6 +443,10 @@ def build_parser() -> argparse.ArgumentParser:
     edit.add_argument("instruction", help="Exact requested change.")
     edit.add_argument("--mode", choices=("correct", "revise", "restyle", "redraw"), default="correct")
     edit.add_argument("--reference-image", action="append", default=[])
+    edit.add_argument(
+        "--mask",
+        help="Optional spatial edit mask. It must match the primary image's format and dimensions and contain alpha; mask guidance is not a pixel-perfect boundary.",
+    )
     edit.add_argument("--preserve", action="append", default=[])
     edit.add_argument("--allow-change", action="append", default=[])
     edit.add_argument("--lang", choices=("en", "zh"))
