@@ -11,6 +11,7 @@ GPT2_MIN_PIXELS = 655_360
 GPT2_MAX_PIXELS = 8_294_400
 GPT2_MAX_EDGE = 3840
 GPT2_MAX_ASPECT = 3.0
+OPENAI_EDIT_FILE_LIMIT_BYTES = 50 * 1024 * 1024
 
 
 def is_gpt_image_2(model: str | None) -> bool:
@@ -88,11 +89,16 @@ def nearest_gpt_image_2_size(width: int, height: int) -> tuple[int, int]:
     return best_w, best_h
 
 
-def read_raster_size(path: str | Path) -> tuple[int, int]:
+def _load_pillow():
     try:
         from PIL import Image
     except ImportError as exc:
-        raise RuntimeError("Pillow is required for raster size inspection. Install requirements.txt.") from exc
+        raise RuntimeError("Pillow is required for raster inspection. Install requirements.txt.") from exc
+    return Image
+
+
+def read_raster_size(path: str | Path) -> tuple[int, int]:
+    Image = _load_pillow()
     with Image.open(path) as image:
         return int(image.width), int(image.height)
 
@@ -104,3 +110,43 @@ def source_preserving_gpt_image_2_size(path: str | Path) -> tuple[str, bool]:
         return f"{width}x{height}", True
     new_w, new_h = nearest_gpt_image_2_size(width, height)
     return f"{new_w}x{new_h}", False
+
+
+def validate_edit_mask(primary_path: str | Path, mask_path: str | Path) -> dict:
+    """Validate OpenAI Images edit mask requirements before uploading files."""
+    primary = Path(primary_path)
+    mask = Path(mask_path)
+    for label, path in (("Primary edit image", primary), ("Edit mask", mask)):
+        if not path.is_file():
+            raise ValueError(f"{label} not found: {path}")
+        if path.stat().st_size >= OPENAI_EDIT_FILE_LIMIT_BYTES:
+            raise ValueError(f"{label} must be smaller than 50MB: {path}")
+
+    Image = _load_pillow()
+    try:
+        with Image.open(primary) as source, Image.open(mask) as mask_image:
+            source_format = (source.format or "").upper()
+            mask_format = (mask_image.format or "").upper()
+            source_size = (int(source.width), int(source.height))
+            mask_size = (int(mask_image.width), int(mask_image.height))
+            mask_bands = tuple(mask_image.getbands())
+    except Exception as exc:
+        raise ValueError(f"Could not inspect edit image/mask: {exc}") from exc
+
+    if source_size != mask_size:
+        raise ValueError(
+            f"Edit mask must match the primary image dimensions exactly: source={source_size}, mask={mask_size}"
+        )
+    if not source_format or not mask_format or source_format != mask_format:
+        raise ValueError(
+            f"Edit mask must use the same image format as the primary image: source={source_format or 'unknown'}, mask={mask_format or 'unknown'}"
+        )
+    if "A" not in mask_bands:
+        raise ValueError("Edit mask must contain an alpha channel.")
+
+    return {
+        "format": source_format.lower(),
+        "width": source_size[0],
+        "height": source_size[1],
+        "mask_has_alpha": True,
+    }
