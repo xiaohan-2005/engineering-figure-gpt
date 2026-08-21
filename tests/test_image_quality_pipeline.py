@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import subprocess
 import sys
@@ -48,6 +49,21 @@ def test_correct_edit_prompt_is_preservation_first():
     assert "all arrow endpoints" in prompt
     assert "Encoder label text" in prompt
     assert "do not treat this as a from-scratch generation task" in prompt
+
+
+def test_edit_runtime_args_do_not_split_positional_image_path():
+    module = load_module(ROOT / "scripts/efg.py", "efg_unified_cli")
+    args = argparse.Namespace(input_image="figure.png")
+    runtime = module.image_runtime_args(args, include_input_images=False)
+    assert "--input-image" not in runtime
+    assert "figure.png" not in runtime
+
+
+def test_image_runtime_args_forward_real_image_lists_only():
+    module = load_module(ROOT / "scripts/efg.py", "efg_unified_cli_images")
+    args = argparse.Namespace(input_image=["one.png", "two.png"])
+    runtime = module.image_runtime_args(args, include_input_images=True)
+    assert runtime == ["--input-image", "one.png", "--input-image", "two.png"]
 
 
 def test_efg_edit_dry_run_preserves_legal_source_canvas(tmp_path):
@@ -109,6 +125,8 @@ def test_efg_final_profile_uses_larger_canvas_without_forcing_highres_route():
         text=True,
     )
     assert proc.returncode == 0, proc.stderr
+    assert '"model": "gpt-image-2"' in proc.stdout
+    assert '"final_quality_requested": false' in proc.stdout
     assert '"quality": "high"' in proc.stdout
     assert '"size": "2048x1152"' in proc.stdout
 
