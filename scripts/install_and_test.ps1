@@ -73,6 +73,21 @@ try {
     if ($editText -notmatch "Publication Image Quality Contract") { throw "Edit prompt is missing the image quality contract." }
     Write-Host "[PASS] Edit mode built a preservation-first quality-constrained prompt" -ForegroundColor Green
 
+    # Spatial mask -> validation -> preservation rule -> edit dry-run.
+    $maskPng = Join-Path $tempDir "edit-mask.png"
+    $maskPrompt = Join-Path $tempDir "mask-edit-prompt.txt"
+    & python -c "from PIL import Image; src=Image.open(r'$png'); Image.new('RGBA', src.size, (0,0,0,0)).save(r'$maskPng')"
+    if ($LASTEXITCODE -ne 0) { throw "Could not create local mask fixture." }
+    Push-Location $target
+    & python scripts/efg.py edit $png "Change only the masked label" --mode correct --mask $maskPng --save-prompt $maskPrompt --dry-run
+    $maskExit = $LASTEXITCODE
+    Pop-Location
+    if ($maskExit -ne 0) { throw "Mask edit dry-run smoke test failed with exit code $maskExit." }
+    if (-not (Test-Path $maskPrompt)) { throw "Mask edit dry-run did not preserve the resolved prompt." }
+    $maskText = Get-Content -Raw -Path $maskPrompt
+    if ($maskText -notmatch "outside the supplied edit mask") { throw "Mask edit prompt is missing the outside-mask preservation rule." }
+    Write-Host "[PASS] Mask-guided edit validated the mask and added spatial preservation constraints" -ForegroundColor Green
+
     $qualityPng = Join-Path $tempDir "quality-contract-smoke.png"
     & python -c "from PIL import Image; Image.new('RGB',(1536,1024),'white').save(r'$qualityPng')"
     if ($LASTEXITCODE -ne 0) { throw "Could not create local raster verification fixture." }
