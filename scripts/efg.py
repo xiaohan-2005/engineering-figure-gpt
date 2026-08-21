@@ -2,18 +2,17 @@
 """Unified CLI for Engineering Figure GPT.
 
 User-facing workflows:
-
-- `efg image`: generate a conceptual figure with an injected publication-quality contract.
-- `efg edit`: correct, revise, restyle, or redraw an existing figure with preservation rules.
-- `efg verify-image`: verify objective raster metadata such as pixel dimensions and aspect ratio.
-- `efg plot`: normalize a concise quantitative request and render it deterministically.
-- `efg render`: render an already normalized plot spec.
+- `efg image`: generate a conceptual figure with a publication-quality contract.
+- `efg edit`: preservation-first correction/revision/restyling/redrawing.
+- `efg verify-image`: verify objective raster metadata.
+- `efg plot` / `efg render`: deterministic quantitative figures.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -25,6 +24,15 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 QUALITY_PATH = ROOT / "assets" / "prompt-templates" / "image-quality-contracts.json"
 RASTER_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+DEFAULT_IMAGE_MODEL = "gpt-image-2"
+
+GPT2_MIN_PIXELS = 655_360
+GPT2_MAX_PIXELS = 8_294_400
+GPT2_MAX_EDGE = 3840
+GPT2_MAX_ASPECT = 3.0
+
+PROFILE_QUALITY = {"draft": "low", "paper": "high", "final": "high"}
+PROFILE_SIZE = {"draft": "1024x1024", "paper": "1536x1024", "final": "2048x1152"}
 
 
 def run(parts: list[str]) -> int:
@@ -64,6 +72,144 @@ def build_raw_image_prompt(text: str, lang: str | None, style_note: str | None, 
     return prompt
 
 
+def parse_size(value: str) -> tuple[int, int]:
+    match = re.fullmatch(r"(\d+)x(\d+)", value.strip().lower())
+    if not match:
+        raise ValueError(f"Invalid size: {value}")
+    return int(match.group(1)), int(match.group(2))
+
+
+def valid_gpt_image_2_size(width: int, height: int) -> bool:
+    if width <= 0 or height <= 0:
+        return False
+    if width > GPT2_MAX_EDGE or height > GPT2_MAX_EDGE:
+        return False
+    if width % 16 or height % 16:
+        return False
+    ratio = max(width, height) / min(width, height)
+    pixels = width * height
+    return ratio <= GPT2_MAX_ASPECT and GPT2_MIN_PIXELS <= pixels <= GPT2_MAX_PIXELS
+
+
+def nearest_gpt_image_2_size(width: int, height: int) -> tuple[int, int]:
+    """Return a close legal GPT Image 2 output size while preserving aspect approximately."""
+    if width <= 0 or height <= 0:
+        raise ValueError("Image dimensions must be positive.")
+    ratio = max(width, height) / min(width, height)
+    if ratio > GPT2_MAX_ASPECT:
+        raise ValueError(
+            f"Source aspect ratio {ratio:.3f}:1 exceeds GPT Image 2's 3:1 output limit; pass --size explicitly after padding/cropping."
+        )
+
+    scale = 1.0
+    max_edge = max(width, height)
+    pixels = width * height
+    if max_edge > GPT2_MAX_EDGE:
+        scale = min(scale, GPT2_MAX_EDGE / max_edge)
+    if pixels > GPT2_MAX_PIXELS:
+        scale = min(scale, math.sqrt(GPT2_MAX_PIXELS / pixels))
+    if pixels < GPT2_MIN_PIXELS:
+        scale = max(scale, math.sqrt(GPT2_MIN_PIXELS / pixels))
+
+    base_w = max(16, round(width * scale / 16) * 16)
+    base_h = max(16, round(height * scale / 16) * 16)
+
+    candidates: list[tuple[float, int, int]] = []
+    source_ratio = width / height
+    for dw in range(-128, 129, 16):
+        for dh in range(-128, 129, 16):
+            w = base_w + dw
+            h = base_h + dh
+            if not valid_gpt_image_2_size(w, h):
+                continue
+            ratio_error = abs((w / h) - source_ratio) / max(abs(source_ratio), 1e-9)
+            scale_error = abs((w * h) - (width * height * scale * scale)) / max(width * height * scale * scale, 1)
+            candidates.append((ratio_error * 10 + scale_error, w, h))
+    if not candidates:
+        raise ValueError("Could not derive a legal GPT Image 2 output size close to the source canvas.")
+    _, best_w, best_h = min(candidates)
+    return best_w, best_h
+
+
+def read_raster_size(path: str) -> tuple[int, int]:
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise SystemExit("Pillow is required for edit canvas preservation. Install requirements.txt.") from exc
+    with Image.open(path) as image:
+        return int(image.width), int(image.height)
+
+
+def intended_image_model(args: argparse.Namespace) -> str:
+    if getattr(args, "model", None):
+        return str(args.model)
+    if getattr(args, "final", False) or getattr(args, "highres", False):
+        return os.getenv("OPENAI_IMAGE_HIGHRES_MODEL", "").strip()
+    return os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL).strip() or DEFAULT_IMAGE_MODEL
+
+
+def apply_profile_defaults(args: argparse.Namespace, profile: str, *, editing: bool = False) -> None:
+    if getattr(args, "quality", None) is None and not os.getenv("OPENAI_IMAGE_QUALITY"):
+        args.quality = PROFILE_QUALITY[profile]
+    if getattr(args, "output_format", None) is None and not os.getenv("OPENAI_IMAGE_OUTPUT_FORMAT"):
+        args.output_format = "png"
+    if not editing and getattr(args, "size", None) is None and not os.getenv("OPENAI_IMAGE_SIZE"):
+        args.size = PROFILE_SIZE[profile]
+
+
+def resolve_edit_canvas(args: argparse.Namespace) -> int:
+    """Preserve the source raster canvas by default for GPT Image 2 edits."""
+    if getattr(args, "size", None) or os.getenv("OPENAI_IMAGE_SIZE"):
+        return 0
+
+    model = intended_image_model(args)
+    if not model:
+        print(
+            "Final/high-resolution model is not configured, so edit canvas preservation cannot resolve the target model yet.",
+            file=sys.stderr,
+        )
+        return 0
+
+    if not model.startswith("gpt-image-2"):
+        if args.mode == "correct":
+            print(
+                "Preservation-first correct mode requires an explicit --size for non-GPT-Image-2 models; "
+                "the skill will not silently change the canvas.",
+                file=sys.stderr,
+            )
+            return 2
+        args.size = "auto"
+        print(
+            f"[WARN] Model '{model}' is not GPT Image 2; edit output size is left to the provider (size=auto).",
+            file=sys.stderr,
+        )
+        return 0
+
+    try:
+        width, height = read_raster_size(args.input_image)
+    except Exception as exc:
+        print(f"Could not inspect source image dimensions: {exc}", file=sys.stderr)
+        return 2
+
+    if valid_gpt_image_2_size(width, height):
+        args.size = f"{width}x{height}"
+        print(f"[INFO] Preserving source canvas for GPT Image 2 edit: {args.size}", file=sys.stderr)
+        return 0
+
+    try:
+        new_w, new_h = nearest_gpt_image_2_size(width, height)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    args.size = f"{new_w}x{new_h}"
+    print(
+        f"[WARN] Source canvas {width}x{height} is not a legal GPT Image 2 output size; "
+        f"using nearest legal canvas {args.size}. Pass --size explicitly to override.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def add_image_runtime_options(parser: argparse.ArgumentParser, include_input_images: bool = True) -> None:
     if include_input_images:
         parser.add_argument("--input-image", action="append", default=[], help="Input image for editing; may be repeated.")
@@ -78,9 +224,13 @@ def add_image_runtime_options(parser: argparse.ArgumentParser, include_input_ima
         "--background",
         dest="image_background",
         choices=("transparent", "opaque", "auto"),
-        help="Image canvas background setting forwarded to the Images API; distinct from the scientific background text.",
+        help="Image canvas background setting forwarded to the Images API.",
     )
-    parser.add_argument("--input-fidelity", choices=("low", "high"))
+    parser.add_argument(
+        "--input-fidelity",
+        choices=("low", "high"),
+        help="Only for image models/endpoints that support this parameter. GPT Image 2 rejects it because input fidelity is always high.",
+    )
     parser.add_argument("--n", type=int)
     parser.add_argument("--out-dir")
     parser.add_argument("--prefix")
@@ -94,7 +244,6 @@ def image_runtime_args(args: argparse.Namespace) -> list[str]:
     parts: list[str] = []
     for value in getattr(args, "input_image", []) or []:
         parts += ["--input-image", str(value)]
-
     scalar = (
         ("model", "--model"),
         ("base_url", "--base-url"),
@@ -113,7 +262,6 @@ def image_runtime_args(args: argparse.Namespace) -> list[str]:
         value = getattr(args, attr, None)
         if value is not None:
             parts += [flag, str(value)]
-
     if getattr(args, "allow_third_party", False):
         parts.append("--allow-third-party")
     if getattr(args, "highres", False):
@@ -135,8 +283,9 @@ def resolve_prompt_output_path(save_prompt: str | None, temp_dir: str) -> Path:
     return Path(temp_dir) / "final-prompt.txt"
 
 
-def resolved_requested_size(args: argparse.Namespace) -> str:
-    return str(getattr(args, "size", None) or os.getenv("OPENAI_IMAGE_SIZE", "1536x1024"))
+def resolved_requested_size(args: argparse.Namespace) -> str | None:
+    value = getattr(args, "size", None) or os.getenv("OPENAI_IMAGE_SIZE")
+    return str(value) if value else None
 
 
 def resolved_requested_format(args: argparse.Namespace) -> str:
@@ -156,13 +305,6 @@ def output_paths_from_stdout(stdout: str) -> list[str]:
 
 
 def run_image_and_verify(args: argparse.Namespace, command: list[str]) -> int:
-    """Run the image generator and verify the returned raster contract.
-
-    Dry-runs are never verified because no image artifact is created. Live image/edit
-    commands routed through efg verify that each saved raster can be opened and that
-    the provider honored the requested size/format when those settings are concrete.
-    """
-
     proc = subprocess.run([sys.executable, *command], cwd=ROOT, capture_output=True, text=True)
     if proc.stdout:
         print(proc.stdout, end="")
@@ -172,15 +314,13 @@ def run_image_and_verify(args: argparse.Namespace, command: list[str]) -> int:
         return proc.returncode
     if getattr(args, "dry_run", False):
         return 0
-
     outputs = output_paths_from_stdout(proc.stdout)
     if not outputs:
         print("Image command succeeded but no raster output path could be verified.", file=sys.stderr)
         return 1
-
     verify_command = [str(SCRIPTS / "verify_image_output.py"), *outputs]
     expected_size = resolved_requested_size(args)
-    if expected_size.lower() != "auto":
+    if expected_size and expected_size.lower() != "auto":
         verify_command += ["--expected-size", expected_size]
     expected_format = resolved_requested_format(args)
     if expected_format:
@@ -191,10 +331,8 @@ def run_image_and_verify(args: argparse.Namespace, command: list[str]) -> int:
 def cmd_prompt(args: argparse.Namespace) -> int:
     cmd = [
         str(SCRIPTS / "build_engineering_figure_prompt.py"),
-        "--figure-template",
-        args.figure_template,
-        "--quality-profile",
-        args.quality_profile,
+        "--figure-template", args.figure_template,
+        "--quality-profile", args.quality_profile,
     ]
     if args.lang:
         cmd += ["--lang", args.lang]
@@ -211,24 +349,20 @@ def cmd_prompt(args: argparse.Namespace) -> int:
 
 def cmd_image(args: argparse.Namespace) -> int:
     generator = str(SCRIPTS / "generate_image.py")
-    runtime = image_runtime_args(args)
     profile = resolve_quality_profile(args)
-
+    apply_profile_defaults(args, profile, editing=False)
+    runtime = image_runtime_args(args)
     with tempfile.TemporaryDirectory(prefix="efg-prompt-") as tmp:
         prompt_path = resolve_prompt_output_path(args.save_prompt, tmp)
-
         if args.figure_template:
             if not args.background and not args.background_file:
                 print("Template image mode requires background text or --background-file.", file=sys.stderr)
                 return 2
             build = [
                 str(SCRIPTS / "build_engineering_figure_prompt.py"),
-                "--figure-template",
-                args.figure_template,
-                "--quality-profile",
-                profile,
-                "--out",
-                str(prompt_path),
+                "--figure-template", args.figure_template,
+                "--quality-profile", profile,
+                "--out", str(prompt_path),
             ]
             if args.lang:
                 build += ["--lang", args.lang]
@@ -248,18 +382,14 @@ def cmd_image(args: argparse.Namespace) -> int:
             if not raw:
                 print("Provide prompt/background text, --background-file, or --figure-template.", file=sys.stderr)
                 return 2
-            prompt_path.write_text(
-                build_raw_image_prompt(raw, args.lang, args.style_note, profile) + "\n",
-                encoding="utf-8",
-            )
-
+            prompt_path.write_text(build_raw_image_prompt(raw, args.lang, args.style_note, profile) + "\n", encoding="utf-8")
         return run_image_and_verify(args, [generator, "--prompt-file", str(prompt_path), *runtime])
 
 
 def cmd_edit(args: argparse.Namespace) -> int:
     generator = str(SCRIPTS / "generate_image.py")
     profile = resolve_quality_profile(args)
-    runtime = image_runtime_args(args)
+    apply_profile_defaults(args, profile, editing=True)
 
     images = [args.input_image, *(args.reference_image or [])]
     for image in images:
@@ -267,17 +397,19 @@ def cmd_edit(args: argparse.Namespace) -> int:
             print(f"Input/reference image not found: {image}", file=sys.stderr)
             return 2
 
+    canvas_code = resolve_edit_canvas(args)
+    if canvas_code:
+        return canvas_code
+    runtime = image_runtime_args(args)
+
     with tempfile.TemporaryDirectory(prefix="efg-edit-") as tmp:
         prompt_path = resolve_prompt_output_path(args.save_prompt, tmp)
         build = [
             str(SCRIPTS / "build_image_edit_prompt.py"),
             args.instruction,
-            "--mode",
-            args.mode,
-            "--quality-profile",
-            profile,
-            "--out",
-            str(prompt_path),
+            "--mode", args.mode,
+            "--quality-profile", profile,
+            "--out", str(prompt_path),
         ]
         if args.lang:
             build += ["--lang", args.lang]
@@ -288,16 +420,10 @@ def cmd_edit(args: argparse.Namespace) -> int:
         code = run(build)
         if code:
             return code
-
         image_args: list[str] = []
         for image in images:
             image_args += ["--input-image", image]
-        if args.input_fidelity is None:
-            image_args += ["--input-fidelity", "high"]
-        return run_image_and_verify(
-            args,
-            [generator, "--prompt-file", str(prompt_path), *image_args, *runtime],
-        )
+        return run_image_and_verify(args, [generator, "--prompt-file", str(prompt_path), *image_args, *runtime])
 
 
 def cmd_verify_image(args: argparse.Namespace) -> int:
@@ -325,14 +451,7 @@ def cmd_build_plot(args: argparse.Namespace) -> int:
 
 
 def cmd_render(args: argparse.Namespace) -> int:
-    return run([
-        str(SCRIPTS / "plot_publication_figure.py"),
-        args.spec_file,
-        "--out-path",
-        args.out_path,
-        "--formats",
-        *args.formats,
-    ])
+    return run([str(SCRIPTS / "plot_publication_figure.py"), args.spec_file, "--out-path", args.out_path, "--formats", *args.formats])
 
 
 def cmd_plot(args: argparse.Namespace) -> int:
@@ -343,28 +462,17 @@ def cmd_plot(args: argparse.Namespace) -> int:
     code = run([str(SCRIPTS / "build_plot_spec.py"), args.request_file, "--out", str(spec_out)])
     if code:
         return code
-    return run([
-        str(SCRIPTS / "plot_publication_figure.py"),
-        str(spec_out),
-        "--out-path",
-        args.out_path,
-        "--formats",
-        *args.formats,
-    ])
+    return run([str(SCRIPTS / "plot_publication_figure.py"), str(spec_out), "--out-path", args.out_path, "--formats", *args.formats])
 
 
 def cmd_provider_check(args: argparse.Namespace) -> int:
     command = [str(SCRIPTS / "generate_image.py"), "--check-provider"]
-    if args.base_url:
-        command += ["--base-url", args.base_url]
-    if args.model:
-        command += ["--model", args.model]
-    if args.api_key_file:
-        command += ["--api-key-file", args.api_key_file]
+    for attr, flag in (("base_url", "--base-url"), ("model", "--model"), ("api_key_file", "--api-key-file"), ("timeout", "--timeout")):
+        value = getattr(args, attr, None)
+        if value is not None:
+            command += [flag, str(value)]
     if args.allow_third_party:
         command += ["--allow-third-party"]
-    if args.timeout is not None:
-        command += ["--timeout", str(args.timeout)]
     return run(command)
 
 
@@ -385,22 +493,10 @@ def cmd_check(_: argparse.Namespace) -> int:
     if missing:
         print("Missing runtime files:", *missing, sep="\n  - ", file=sys.stderr)
         return 1
-    code = run([
-        str(SCRIPTS / "build_engineering_figure_prompt.py"),
-        "--figure-template",
-        "system-architecture",
-        "--quality-profile",
-        "paper",
-        "offline smoke test",
-    ])
+    code = run([str(SCRIPTS / "build_engineering_figure_prompt.py"), "--figure-template", "system-architecture", "--quality-profile", "paper", "offline smoke test"])
     if code:
         return code
-    code = run([
-        str(SCRIPTS / "build_image_edit_prompt.py"),
-        "fix one label only",
-        "--mode",
-        "correct",
-    ])
+    code = run([str(SCRIPTS / "build_image_edit_prompt.py"), "fix one label only", "--mode", "correct"])
     if code:
         return code
     return run([str(SCRIPTS / "generate_image.py"), "offline smoke test", "--dry-run"])
@@ -421,13 +517,13 @@ def build_parser() -> argparse.ArgumentParser:
     prompt.set_defaults(func=cmd_prompt)
 
     image = sub.add_parser("image", help="Generate a conceptual figure with a publication image-quality contract.")
-    image.add_argument("background", nargs="?", help="Raw prompt/background, or scientific background when --figure-template is used.")
+    image.add_argument("background", nargs="?", help="Raw prompt/background, or scientific background with --figure-template.")
     image.add_argument("--background-file", help="UTF-8 prompt/background file.")
     image.add_argument("--figure-template")
     image.add_argument("--lang", choices=("en", "zh"))
     image.add_argument("--style-note")
     image.add_argument("--quality-profile", choices=("draft", "paper", "final"), default=None)
-    image.add_argument("--save-prompt", help="Preserve the resolved prompt including the quality contract.")
+    image.add_argument("--save-prompt")
     add_image_runtime_options(image)
     image.set_defaults(func=cmd_image)
 
@@ -435,12 +531,12 @@ def build_parser() -> argparse.ArgumentParser:
     edit.add_argument("input_image", help="Primary raster figure to modify.")
     edit.add_argument("instruction", help="Exact requested change.")
     edit.add_argument("--mode", choices=("correct", "revise", "restyle", "redraw"), default="correct")
-    edit.add_argument("--reference-image", action="append", default=[], help="Additional reference image; may be repeated.")
-    edit.add_argument("--preserve", action="append", default=[], help="Additional item/relationship/style element that must remain unchanged.")
-    edit.add_argument("--allow-change", action="append", default=[], help="Explicitly allow a region/property to change.")
+    edit.add_argument("--reference-image", action="append", default=[])
+    edit.add_argument("--preserve", action="append", default=[])
+    edit.add_argument("--allow-change", action="append", default=[])
     edit.add_argument("--lang", choices=("en", "zh"))
     edit.add_argument("--quality-profile", choices=("draft", "paper", "final"), default=None)
-    edit.add_argument("--save-prompt", help="Preserve the resolved edit contract/prompt.")
+    edit.add_argument("--save-prompt")
     add_image_runtime_options(edit, include_input_images=False)
     edit.set_defaults(func=cmd_edit)
 
@@ -474,7 +570,7 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--formats", nargs="+", default=["png", "pdf", "svg"])
     render.set_defaults(func=cmd_render)
 
-    provider = sub.add_parser("provider-check", help="Probe an official or explicitly trusted OpenAI-compatible relay without generating an image.")
+    provider = sub.add_parser("provider-check", help="Probe an official or trusted OpenAI-compatible relay without generating an image.")
     provider.add_argument("--base-url")
     provider.add_argument("--model")
     provider.add_argument("--api-key-file")
