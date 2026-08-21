@@ -48,6 +48,7 @@ def base_args(**overrides):
         timeout=30,
         input_image=[],
         input_fidelity=None,
+        mask=None,
         allow_third_party=False,
         _codex_trusted=False,
     )
@@ -102,6 +103,57 @@ def test_gpt_image_2_edit_omits_input_fidelity(monkeypatch, tmp_path):
     assert captured["file_fields"] == ["image[]"]
     assert captured["file_names"] == ["input.png"]
     assert result["data"]
+
+
+def test_edit_request_includes_mask_as_separate_multipart_field(monkeypatch, tmp_path):
+    module = load_module()
+    image = tmp_path / "input.png"
+    mask = tmp_path / "mask.png"
+    Image.new("RGBA", (1536, 1024), (255, 255, 255, 255)).save(image)
+    Image.new("RGBA", (1536, 1024), (0, 0, 0, 0)).save(mask)
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["data"] = dict(kwargs["data"])
+        captured["file_fields"] = [item[0] for item in kwargs["files"]]
+        captured["file_names"] = [item[1][0] for item in kwargs["files"]]
+        return FakeResponse({"data": [{"b64_json": "aW1n"}]})
+
+    args = base_args(input_image=[str(image)], mask=str(mask))
+    info = module.validate_edit_inputs(args)
+    assert info == {"format": "png", "width": 1536, "height": 1024, "mask_has_alpha": True}
+
+    monkeypatch.setattr(module.requests, "post", fake_post)
+    result = module.edit_request(args, "change only the masked label", {"Authorization": "Bearer test"})
+
+    assert captured["url"] == "https://api.openai.com/v1/images/edits"
+    assert captured["file_fields"] == ["image[]", "mask"]
+    assert captured["file_names"] == ["input.png", "mask.png"]
+    assert "input_fidelity" not in captured["data"]
+    assert result["data"]
+
+
+def test_edit_mask_rejects_dimension_mismatch(tmp_path):
+    module = load_module()
+    image = tmp_path / "input.png"
+    mask = tmp_path / "mask.png"
+    Image.new("RGBA", (1536, 1024), (255, 255, 255, 255)).save(image)
+    Image.new("RGBA", (1024, 1024), (0, 0, 0, 0)).save(mask)
+    args = base_args(input_image=[str(image)], mask=str(mask))
+    with pytest.raises(SystemExit, match="dimensions exactly"):
+        module.validate_edit_inputs(args)
+
+
+def test_edit_mask_rejects_missing_alpha_channel(tmp_path):
+    module = load_module()
+    image = tmp_path / "input.png"
+    mask = tmp_path / "mask.png"
+    Image.new("RGB", (1536, 1024), "white").save(image)
+    Image.new("RGB", (1536, 1024), "black").save(mask)
+    args = base_args(input_image=[str(image)], mask=str(mask))
+    with pytest.raises(SystemExit, match="alpha channel"):
+        module.validate_edit_inputs(args)
 
 
 def test_gpt_image_2_rejects_explicit_input_fidelity():
