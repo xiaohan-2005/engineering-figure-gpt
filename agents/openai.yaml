@@ -1,7 +1,7 @@
 interface:
   display_name: "Engineering Figure GPT"
-  short_description: "GPT-native research figures, exact plots, and mathematical-modeling diagrams."
-  default_prompt: "Use $engineering-figure-gpt to choose image, plot, or mixed mode; preserve numeric truth and formulas; use GPT image generation only for conceptual content; keep exact quantitative panels local; and apply Chinese/bilingual academic-figure checks when relevant."
+  short_description: "GPT-native research figures with constrained editing, visual QA, exact plots, and modeling diagrams."
+  default_prompt: "Use $engineering-figure-gpt to choose image, edit, plot, or mixed mode. For conceptual images, inject the publication image-quality contract and verify readability, clipping, arrows, labels, and scientific fidelity before final use. For existing images, choose the narrowest preservation-first edit mode: correct, revise, restyle, or redraw. Keep exact quantitative geometry and formulas local/deterministic, reuse the active Codex/CC Switch provider when appropriate, and verify explicit raster-size/format requirements on the returned artifact."
 
 policy:
   allow_implicit_invocation: true
