@@ -8,6 +8,9 @@ def test_reference_index_points_to_existing_files():
     expected = [
         "figure-brief-spec.md",
         "image-mode.md",
+        "image-quality-contract.md",
+        "edit-mode.md",
+        "visual-qa.md",
         "plot-mode.md",
         "mixed-mode.md",
         "natural-language-plot-workflow.md",
