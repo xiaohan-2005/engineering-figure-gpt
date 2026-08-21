@@ -5,6 +5,9 @@ import base64
 import importlib.util
 from pathlib import Path
 
+import pytest
+from PIL import Image
+
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "scripts" / "generate_image.py"
 
@@ -45,6 +48,8 @@ def base_args(**overrides):
         timeout=30,
         input_image=[],
         input_fidelity=None,
+        allow_third_party=False,
+        _codex_trusted=False,
     )
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -75,10 +80,10 @@ def test_generation_request_builds_openai_payload(monkeypatch):
     assert result["data"]
 
 
-def test_edit_request_uses_multipart_and_fidelity(monkeypatch, tmp_path):
+def test_gpt_image_2_edit_omits_input_fidelity(monkeypatch, tmp_path):
     module = load_module()
     image = tmp_path / "input.png"
-    image.write_bytes(b"png")
+    Image.new("RGB", (1536, 1024), "white").save(image)
     captured = {}
 
     def fake_post(url, **kwargs):
@@ -89,14 +94,50 @@ def test_edit_request_uses_multipart_and_fidelity(monkeypatch, tmp_path):
         return FakeResponse({"data": [{"b64_json": "aW1n"}]})
 
     monkeypatch.setattr(module.requests, "post", fake_post)
-    args = base_args(input_image=[str(image)], input_fidelity="high")
+    args = base_args(input_image=[str(image)], input_fidelity=None)
     result = module.edit_request(args, "preserve structure", {"Authorization": "Bearer test"})
 
     assert captured["url"] == "https://api.openai.com/v1/images/edits"
-    assert captured["data"]["input_fidelity"] == "high"
+    assert "input_fidelity" not in captured["data"]
     assert captured["file_fields"] == ["image[]"]
     assert captured["file_names"] == ["input.png"]
     assert result["data"]
+
+
+def test_gpt_image_2_rejects_explicit_input_fidelity():
+    module = load_module()
+    args = base_args(input_fidelity="high")
+    with pytest.raises(SystemExit, match="does not accept --input-fidelity"):
+        module.validate_target(args)
+
+
+def test_gpt_image_2_rejects_illegal_output_size():
+    module = load_module()
+    args = base_args(size="1920x1080")
+    with pytest.raises(SystemExit, match="divisible by 16"):
+        module.validate_target(args)
+
+
+def test_gpt_image_2_edit_preserves_legal_source_canvas(tmp_path):
+    module = load_module()
+    image = tmp_path / "source.png"
+    Image.new("RGB", (1536, 1024), "white").save(image)
+    args = base_args(size=None, input_image=[str(image)])
+    module.resolve_output_size(args)
+    assert args.size == "1536x1024"
+
+
+def test_gpt_image_2_edit_normalizes_source_canvas_to_nearest_legal_size(tmp_path):
+    module = load_module()
+    image = tmp_path / "source.png"
+    Image.new("RGB", (1920, 1080), "white").save(image)
+    args = base_args(size=None, input_image=[str(image)])
+    module.resolve_output_size(args)
+    width, height = map(int, args.size.split("x"))
+    assert width % 16 == 0
+    assert height % 16 == 0
+    assert max(width, height) <= 3840
+    assert abs((width / height) - (1920 / 1080)) < 0.03
 
 
 def test_save_result_writes_base64_image(tmp_path):
