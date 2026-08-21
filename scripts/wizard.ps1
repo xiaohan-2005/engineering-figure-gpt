@@ -130,6 +130,7 @@ if ($choice -eq "3") {
     $preserve = Read-Host "Optional must-preserve item (Enter to skip)"
     $allowChange = Read-Host "Optional explicitly allowed change (Enter to skip)"
     $reference = Read-Host "Optional additional reference image (Enter to skip)"
+    $mask = Read-Host "Optional spatial edit mask (same size/format as primary image, with alpha; Enter to skip)"
     $savePrompt = Read-Host "Save edit prompt path (default output/edit-prompt.txt)"
     if (-not $savePrompt) { $savePrompt = "output/edit-prompt.txt" }
 
@@ -137,6 +138,7 @@ if ($choice -eq "3") {
     Add-IfValue $argsList "--preserve" $preserve
     Add-IfValue $argsList "--allow-change" $allowChange
     Add-IfValue $argsList "--reference-image" $reference
+    Add-IfValue $argsList "--mask" $mask
     Add-OptionalFinalModelRoute $argsList
     Add-EndpointOverride $argsList
     Maybe-DryRun $argsList
