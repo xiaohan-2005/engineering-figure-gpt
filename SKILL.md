@@ -68,6 +68,14 @@ python scripts/efg.py image \
 
 Remove `--dry-run` only for a live request. Raw prompts routed through `efg image` also receive the quality contract.
 
+Default execution hints when the user does not override runtime parameters:
+
+- `draft` → `quality=low`, `size=1024x1024`.
+- `paper` → `quality=high`, `size=1536x1024`.
+- `final` quality profile → `quality=high`, `size=2048x1152`.
+
+The `final` quality profile strengthens prompt/render defaults; model-tier routing is controlled separately by `--final` / `--highres`.
+
 For Chinese/bilingual figures, read `references/chinese-labels.md`. Keep Chinese labels concise, provide extra horizontal room, preserve established English abbreviations and mathematical symbols, and do not solve density by shrinking essential text into micro-labels.
 
 ## Edit mode
@@ -89,7 +97,19 @@ Modes:
 - `restyle` — visual style only; scientific content, labels, relationships, and claims stay locked.
 - `redraw` — clean reconstruction; layout may improve, but scientific meaning, canonical labels, and supported relationships remain authoritative.
 
-Use repeatable `--preserve` and `--allow-change` to define the change boundary. Extra `--reference-image` files may guide style/reconstruction but must not silently override the primary figure's scientific content. Edit mode defaults to `input_fidelity=high` unless explicitly overridden.
+Use repeatable `--preserve` and `--allow-change` to define the change boundary. Extra `--reference-image` files may guide style/reconstruction but must not silently override the primary figure's scientific content.
+
+### GPT Image 2 edit policy
+
+For `gpt-image-2`, **do not send `input_fidelity`**. GPT Image 2 processes every input image at high fidelity automatically and the API does not allow changing this parameter.
+
+When `--size` is not supplied, `efg edit` and the portable generator inspect the primary source image:
+
+- if its width/height already satisfy GPT Image 2 output constraints, preserve the exact source canvas;
+- if the aspect ratio is supported but the pixel dimensions are not legal, choose the nearest legal canvas and emit an explicit warning;
+- if exact canvas preservation cannot be safely resolved, fail or require an explicit legal `--size` rather than silently changing the figure.
+
+This matters most for `correct`: a one-label fix should not unexpectedly turn a landscape figure into a different canvas.
 
 Read `references/edit-mode.md`.
 
@@ -118,7 +138,7 @@ Read `references/visual-qa.md`.
 
 ## Final/high-resolution output
 
-Model tier and actual raster dimensions are separate concerns.
+Model tier, rendering quality, and actual raster dimensions are separate concerns.
 
 Routine model:
 
@@ -126,15 +146,15 @@ Routine model:
 --model -> OPENAI_IMAGE_MODEL -> gpt-image-2
 ```
 
-Final/high-resolution intent:
+Final/high-resolution model routing:
 
 ```text
 --model -> OPENAI_IMAGE_HIGHRES_MODEL
 ```
 
-If final-quality intent has no explicit image model and no configured `OPENAI_IMAGE_HIGHRES_MODEL`, fail closed. Do not silently lower the model, quality, requested size, or provider.
+If `--final` / `--highres` has no explicit image model and no configured `OPENAI_IMAGE_HIGHRES_MODEL`, fail closed. Do not silently lower the model, quality, requested size, or provider.
 
-The requested canvas is controlled separately with `--size`. Never call an output 2K/4K/final-size merely because the model name suggests high resolution.
+The requested canvas is controlled separately with `--size`. For GPT Image 2, concrete sizes must obey its model constraints: each edge at most 3840 px, both edges divisible by 16, long/short ratio at most 3:1, and total pixels between 655,360 and 8,294,400. Do not call an output 2K/4K/final-size merely because a model name suggests high resolution.
 
 ```bash
 python scripts/efg.py verify-image output/figure.png \
@@ -205,6 +225,8 @@ Rules:
 
 For mixed figures, render quantitative panels first, generate conceptual panels separately, then compose without raster-redrawing the exact plots. When final typography/formulas/composition need deterministic editing, use `references/editable-figure-handoff.md`.
 
+For reusable or showcase work, preserve the evidence chain described in `references/reproducibility-chain.md`.
+
 ## Unified CLI
 
 ```bash
@@ -232,3 +254,4 @@ Load only the current task's relevant file:
 - `references/publication-plot-api.md`
 - `references/mathematical-modeling.md`
 - `references/editable-figure-handoff.md`
+- `references/reproducibility-chain.md`
