@@ -21,8 +21,10 @@ jobs:
         run: python scripts/validate_skill.py .
       - name: Validate user-facing UTF-8 and mojibake
         run: python scripts/validate_text_encoding.py SKILL.md README.md README.en.md README.zh-CN.md INSTALL.md agents assets references schemas templates tests secrets
-      - name: Validate Chinese prompt templates
+      - name: Validate domain prompt templates
         run: python scripts/validate_prompt_templates.py .
+      - name: Validate image quality contracts
+        run: python scripts/validate_image_quality_contracts.py .
       - name: Validate documentation links and images
         run: python scripts/check_docs.py
       - name: Run tests
