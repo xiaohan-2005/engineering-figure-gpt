@@ -24,6 +24,7 @@ RUNTIME_SCRIPT_ALLOW = {
     "codex_provider_config.py",
     "efg.py",
     "generate_image.py",
+    "image_model_policy.py",
     "plot_publication_figure.py",
     "verify_image_output.py",
 }
