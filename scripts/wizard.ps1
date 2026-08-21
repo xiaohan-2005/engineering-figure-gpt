@@ -54,6 +54,12 @@ function Add-EndpointOverride([System.Collections.ArrayList]$ArgsList) {
     }
 }
 
+function Add-OptionalFinalModelRoute([System.Collections.ArrayList]$ArgsList) {
+    if (Ask-YesNo "Use the configured final/high-resolution model route (--final)? This is separate from the visual quality profile" $false) {
+        [void]$ArgsList.Add("--final")
+    }
+}
+
 function Maybe-DryRun([System.Collections.ArrayList]$ArgsList) {
     $live = Ask-YesNo "Call the live image API now? This may use paid credits" $false
     if (-not $live) {
@@ -92,7 +98,7 @@ if ($choice -eq "2") {
     & python $promptBuilder --list-templates
     $template = Read-Host "Template (optional; Enter if the text is already the figure request)"
     $lang = Read-Host "Language (zh/en; Enter for auto)"
-    $profile = @("draft", "paper", "final")[(Ask-Choice "Image quality profile" @("draft", "paper - recommended", "final - strongest final-export constraints") 1)]
+    $profile = @("draft", "paper", "final")[(Ask-Choice "Image quality profile" @("draft - fast structural iteration", "paper - recommended", "final - strongest prompt/render constraints") 1)]
     $background = Read-Host "Scientific/modeling background or final image request"
     $style = Read-Host "Optional style note"
     $savePrompt = Read-Host "Save resolved prompt path (default output/final-prompt.txt)"
@@ -102,7 +108,7 @@ if ($choice -eq "2") {
     Add-IfValue $argsList "--figure-template" $template
     Add-IfValue $argsList "--lang" $lang
     Add-IfValue $argsList "--style-note" $style
-    if ($profile -eq "final") { [void]$argsList.Add("--final") }
+    Add-OptionalFinalModelRoute $argsList
     Add-EndpointOverride $argsList
     Maybe-DryRun $argsList
     & python @argsList
@@ -120,7 +126,7 @@ if ($choice -eq "3") {
     ) 0)]
     $instruction = Read-Host "Exact edit instruction"
     if (-not $instruction) { throw "Edit instruction is required." }
-    $profile = @("draft", "paper", "final")[(Ask-Choice "Image quality profile" @("draft", "paper - recommended", "final") 1)]
+    $profile = @("draft", "paper", "final")[(Ask-Choice "Image quality profile" @("draft", "paper - recommended", "final - strongest prompt/render constraints") 1)]
     $preserve = Read-Host "Optional must-preserve item (Enter to skip)"
     $allowChange = Read-Host "Optional explicitly allowed change (Enter to skip)"
     $reference = Read-Host "Optional additional reference image (Enter to skip)"
@@ -131,7 +137,7 @@ if ($choice -eq "3") {
     Add-IfValue $argsList "--preserve" $preserve
     Add-IfValue $argsList "--allow-change" $allowChange
     Add-IfValue $argsList "--reference-image" $reference
-    if ($profile -eq "final") { [void]$argsList.Add("--final") }
+    Add-OptionalFinalModelRoute $argsList
     Add-EndpointOverride $argsList
     Maybe-DryRun $argsList
     & python @argsList
