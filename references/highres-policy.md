@@ -2,7 +2,7 @@
 
 Use this reference when the user explicitly asks for final export, high resolution, 2K/4K-like output, or another concrete raster-quality target.
 
-## Model tier and raster size are separate
+## Model tier, rendering quality, and raster size are separate
 
 Do not equate a high-resolution model route with a guaranteed pixel size.
 
@@ -14,7 +14,7 @@ OPENAI_IMAGE_MODEL
 
 and otherwise defaults to `gpt-image-2`.
 
-Final/high-resolution intent uses:
+Final/high-resolution model routing uses:
 
 ```text
 OPENAI_IMAGE_HIGHRES_MODEL
@@ -22,7 +22,7 @@ OPENAI_IMAGE_HIGHRES_MODEL
 
 or an explicit image `--model` supplied by the user.
 
-The requested provider canvas is controlled separately with:
+Rendering quality is controlled separately with `--quality`, and the requested provider canvas is controlled separately with:
 
 ```text
 --size WIDTHxHEIGHT
@@ -30,9 +30,41 @@ The requested provider canvas is controlled separately with:
 
 The returned raster must be checked when an exact pixel target matters.
 
-## Triggering final-quality routing
+## Quality profiles
 
-Treat these as final-quality intent:
+When the unified `efg image` path is used and no runtime override/environment value is supplied:
+
+- `draft` → `quality=low`, `size=1024x1024`;
+- `paper` → `quality=high`, `size=1536x1024`;
+- `final` quality profile → `quality=high`, `size=2048x1152`.
+
+The `final` quality profile does **not** by itself force a different model. Use `--final` / `--highres` when a separate final model route is intended.
+
+## GPT Image 2 concrete size rules
+
+`gpt-image-2` accepts flexible concrete resolutions when all constraints are satisfied:
+
+- maximum edge length <= 3840 px;
+- both edges are multiples of 16 px;
+- long-edge / short-edge ratio <= 3:1;
+- total pixels are at least 655,360 and at most 8,294,400.
+
+Common valid examples include:
+
+```text
+1024x1024
+1536x1024
+2048x2048
+2048x1152
+3840x2160
+2160x3840
+```
+
+Do not apply these GPT Image 2-specific assumptions to older image models or relay-specific aliases unless that provider documents equivalent behavior.
+
+## Triggering final-model routing
+
+Treat these as final-model intent:
 
 - `--highres`
 - `--final`
@@ -42,7 +74,7 @@ The final route should also use the `final` image quality contract unless the us
 
 ## Fail-closed rule
 
-If final-quality output is requested but no explicit model and no `OPENAI_IMAGE_HIGHRES_MODEL` are configured, stop immediately.
+If final-model output is requested but no explicit model and no `OPENAI_IMAGE_HIGHRES_MODEL` are configured, stop immediately.
 
 Do **not** silently:
 
@@ -53,15 +85,13 @@ Do **not** silently:
 - alter the requested figure type;
 - claim that a smaller raster is equivalent to a requested 2K/4K target.
 
-The user must explicitly choose a final-quality model or explicitly retry without final-quality intent.
+The user must explicitly choose a final-quality model or explicitly retry without final-model intent.
 
 ## Exact pixel targets
 
-Provider/model support for raster sizes varies. Do not invent a supported size.
+If the user explicitly requests a concrete pixel dimension:
 
-If the user explicitly requests a concrete pixel dimension or a provider-specific 2K/4K mode:
-
-1. use an actual size/model option supported by that provider, if known;
+1. validate it against the selected model/provider's real constraints;
 2. request that size explicitly;
 3. verify the returned raster dimensions;
 4. fail/report the mismatch if the provider returns a different size.
@@ -70,11 +100,23 @@ Example objective verification:
 
 ```bash
 python scripts/efg.py verify-image output/figure.png \
-  --expected-size 1536x1024 \
+  --expected-size 2048x1152 \
   --require-format png
 ```
 
-A provider route that only returns a smaller native canvas cannot be called 2K/4K simply because the model name contains words such as `final`, `pro`, or `highres`.
+A provider route that only returns a smaller native canvas cannot be called 2K/4K simply because the model name contains `final`, `pro`, or `highres`.
+
+## Edit canvas preservation
+
+For GPT Image 2 edits, the source canvas and final-model routing are independent.
+
+If `--size` is omitted:
+
+- preserve the exact source dimensions when they are legal GPT Image 2 output dimensions;
+- otherwise choose the nearest legal canvas while keeping the aspect ratio as close as possible and emit a warning;
+- never silently convert a localized correction to an unrelated default aspect ratio.
+
+For a `correct` edit on a non-GPT-Image-2 model, prefer an explicit supported `--size` if exact canvas preservation matters.
 
 ## Visual clarity still requires inspection
 
@@ -108,4 +150,4 @@ Before spending credits, use:
 python scripts/efg.py provider-check
 ```
 
-A provider check can confirm route/model exposure but cannot guarantee that every size/quality/edit parameter is implemented correctly. Verify the returned artifact when the output contract matters.
+A provider check can confirm route/model exposure but cannot guarantee every size/quality/edit parameter behaves identically. Verify the returned artifact when the output contract matters.
