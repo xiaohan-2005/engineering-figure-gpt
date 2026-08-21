@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Portable GPT-image generation/editing fallback for Engineering Figure GPT.
-
-Connection priority:
-1. explicit CLI overrides;
-2. active Codex provider from ~/.codex/config.toml + ~/.codex/auth.json;
-3. legacy OPENAI_* environment variables/files;
-4. official OpenAI defaults.
-
-The script is GPT-only and keeps model-specific policy explicit instead of assuming
-that every OpenAI-compatible relay implements every Images parameter identically.
-"""
+"""Portable GPT Image generation/editing fallback for Engineering Figure GPT."""
 
 from __future__ import annotations
 
@@ -32,6 +22,7 @@ from codex_provider_config import load_codex_live_provider
 from image_model_policy import (
     is_gpt_image_2,
     source_preserving_gpt_image_2_size,
+    validate_edit_mask,
     validate_gpt_image_2_size,
 )
 
@@ -40,16 +31,8 @@ DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_SIZE = "1536x1024"
 OFFICIAL_HOST = "api.openai.com"
 FINAL_HINTS = (
-    "2k",
-    "highres",
-    "high-res",
-    "high resolution",
-    "final export",
-    "final-export",
-    "final quality",
-    "最终导出",
-    "最终质量",
-    "高分辨率",
+    "2k", "highres", "high-res", "high resolution", "final export", "final-export",
+    "final quality", "最终导出", "最终质量", "高分辨率",
 )
 
 
@@ -73,7 +56,6 @@ def is_official_base_url(base_url: str) -> bool:
 
 
 def resolve_connection(args: argparse.Namespace) -> dict:
-    """Resolve endpoint/key source while preferring the active Codex provider."""
     explicit_base = str(getattr(args, "base_url", None) or "").strip()
     codex_info = None
     source = "official-default"
@@ -85,11 +67,9 @@ def resolve_connection(args: argparse.Namespace) -> dict:
         base_url = explicit_base
         source = "cli"
     else:
-        no_codex = bool(getattr(args, "no_codex_config", False))
-        if not no_codex:
+        if not bool(getattr(args, "no_codex_config", False)):
             codex_info = load_codex_live_provider(
-                getattr(args, "codex_config", None),
-                getattr(args, "codex_auth", None),
+                getattr(args, "codex_config", None), getattr(args, "codex_auth", None)
             )
         if codex_info and codex_info.get("configured"):
             base_url = codex_info.get("base_url") or DEFAULT_BASE_URL
@@ -119,45 +99,37 @@ def resolve_connection(args: argparse.Namespace) -> dict:
 
 
 def read_key(args: argparse.Namespace) -> str:
-    if getattr(args, "api_key", None):
-        return args.api_key.strip()
+    explicit = str(getattr(args, "api_key", None) or "").strip()
+    if explicit:
+        return explicit
 
-    explicit_key_file = getattr(args, "api_key_file", None)
-    if explicit_key_file:
-        path = Path(explicit_key_file).expanduser()
-        if path.is_file():
-            value = path.read_text(encoding="utf-8").strip()
-            if value:
-                return value
+    key_file = getattr(args, "api_key_file", None)
+    if key_file:
+        path = Path(key_file).expanduser()
+        if path.is_file() and (value := path.read_text(encoding="utf-8").strip()):
+            return value
         raise SystemExit(f"API key file not found or empty: {path}")
 
     codex_key = str(getattr(args, "_codex_api_key", None) or "").strip()
     if codex_key:
         return codex_key
-
     if os.getenv("OPENAI_API_KEY"):
         return os.environ["OPENAI_API_KEY"].strip()
 
-    env_key_file = os.getenv("OPENAI_API_KEY_FILE")
-    if env_key_file:
-        path = Path(env_key_file).expanduser()
-        if path.is_file():
-            value = path.read_text(encoding="utf-8").strip()
-            if value:
-                return value
-
-    default = Path.home() / ".codex" / "secrets" / "openai_api_key.txt"
-    if default.is_file():
-        value = default.read_text(encoding="utf-8").strip()
-        if value:
+    fallback_file = os.getenv("OPENAI_API_KEY_FILE")
+    if fallback_file:
+        path = Path(fallback_file).expanduser()
+        if path.is_file() and (value := path.read_text(encoding="utf-8").strip()):
             return value
 
-    info = getattr(args, "_codex_info", None) or {}
-    if info.get("configured"):
+    default = Path.home() / ".codex" / "secrets" / "openai_api_key.txt"
+    if default.is_file() and (value := default.read_text(encoding="utf-8").strip()):
+        return value
+
+    if (getattr(args, "_codex_info", None) or {}).get("configured"):
         raise SystemExit(
-            "The active Codex provider was detected, but no reusable API key was found in "
-            "config.toml/auth.json. Re-enable the provider in CC Switch or configure the "
-            "provider's env_key. Do not paste secrets into prompts."
+            "The active Codex provider was detected, but no reusable API key was found in config.toml/auth.json. "
+            "Re-enable the provider in CC Switch or configure its env_key. Do not paste secrets into prompts."
         )
     raise SystemExit("Missing API key. Configure Codex/CC Switch or set OPENAI_API_KEY/OPENAI_API_KEY_FILE.")
 
@@ -168,8 +140,9 @@ def read_prompt(args: argparse.Namespace) -> str:
         if text:
             return text
         raise SystemExit("Prompt file is empty.")
-    if getattr(args, "prompt", None) and args.prompt.strip():
-        return args.prompt.strip()
+    text = str(getattr(args, "prompt", None) or "").strip()
+    if text:
+        return text
     raise SystemExit("Provide a prompt or --prompt-file.")
 
 
@@ -182,44 +155,34 @@ def final_quality_requested(args: argparse.Namespace, prompt: str = "") -> bool:
 
 def resolve_model(args: argparse.Namespace, prompt: str = "") -> tuple[str, bool]:
     final_requested = final_quality_requested(args, prompt)
-    explicit_model = getattr(args, "model", None)
-    if explicit_model:
-        return str(explicit_model), final_requested
+    if getattr(args, "model", None):
+        return str(args.model), final_requested
     if final_requested:
-        highres_model = os.getenv("OPENAI_IMAGE_HIGHRES_MODEL", "").strip()
-        if not highres_model:
+        model = os.getenv("OPENAI_IMAGE_HIGHRES_MODEL", "").strip()
+        if not model:
             raise SystemExit(
                 "Final/high-resolution output was requested, but OPENAI_IMAGE_HIGHRES_MODEL is not configured. "
                 "Set it to the final-quality image model exposed by the active provider, or pass --model explicitly. "
                 "The skill will not silently downgrade a final-quality request."
             )
-        return highres_model, True
+        return model, True
     return os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL, False
 
 
 def resolve_output_size(args: argparse.Namespace) -> None:
-    """Resolve a concrete output size after model selection.
-
-    GPT Image 2 edits preserve the primary input canvas when it is legal. If the source
-    dimensions are not legal but the aspect ratio can be preserved, use the nearest legal
-    canvas and report that adjustment. Other models retain the historical default unless
-    the caller/provider supplied a size explicitly.
-    """
-    if args.size:
+    if getattr(args, "size", None):
         return
-    if args.input_image and is_gpt_image_2(args.model):
+    inputs = getattr(args, "input_image", []) or []
+    if inputs and is_gpt_image_2(args.model):
         try:
-            size, exact = source_preserving_gpt_image_2_size(args.input_image[0])
+            size, exact = source_preserving_gpt_image_2_size(inputs[0])
         except Exception as exc:
             raise SystemExit(f"Could not resolve GPT Image 2 edit canvas from the source image: {exc}") from exc
         args.size = size
         if exact:
             print(f"[INFO] Preserving source canvas for GPT Image 2 edit: {size}", file=sys.stderr)
         else:
-            print(
-                f"[WARN] Source canvas is not a legal GPT Image 2 output size; using nearest legal canvas {size}.",
-                file=sys.stderr,
-            )
+            print(f"[WARN] Source canvas is not legal for GPT Image 2 output; using nearest legal canvas {size}.", file=sys.stderr)
         return
     args.size = DEFAULT_SIZE
 
@@ -227,16 +190,11 @@ def resolve_output_size(args: argparse.Namespace) -> None:
 def validate_target(args: argparse.Namespace) -> bool:
     args.base_url = normalized_base_url(args.base_url)
     third_party = not is_official_base_url(args.base_url)
-    allow_third_party = (
-        bool(getattr(args, "allow_third_party", False))
-        or env_flag("OPENAI_ALLOW_THIRD_PARTY")
-        or bool(getattr(args, "_codex_trusted", False))
-    )
-    if third_party and not allow_third_party:
+    allowed = bool(getattr(args, "allow_third_party", False)) or env_flag("OPENAI_ALLOW_THIRD_PARTY") or bool(getattr(args, "_codex_trusted", False))
+    if third_party and not allowed:
         raise SystemExit(
-            "Custom/relay base URL detected. Re-run with --allow-third-party or set "
-            "OPENAI_ALLOW_THIRD_PARTY=1 after you trust that endpoint. Active Codex/CC Switch "
-            "providers are trusted automatically because the user already selected them there."
+            "Custom/relay base URL detected. Re-run with --allow-third-party or set OPENAI_ALLOW_THIRD_PARTY=1 "
+            "after you trust that endpoint. Active Codex/CC Switch providers are trusted automatically."
         )
 
     model = str(getattr(args, "model", ""))
@@ -261,6 +219,19 @@ def validate_target(args: argparse.Namespace) -> bool:
     return third_party
 
 
+def validate_edit_inputs(args: argparse.Namespace) -> dict | None:
+    mask = getattr(args, "mask", None)
+    if not mask:
+        return None
+    inputs = getattr(args, "input_image", []) or []
+    if not inputs:
+        raise SystemExit("--mask requires at least one --input-image.")
+    try:
+        return validate_edit_mask(inputs[0], mask)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
 def api_error(operation: str, response) -> str:
     message = ""
     try:
@@ -274,8 +245,7 @@ def api_error(operation: str, response) -> str:
         message = str(getattr(response, "text", "") or "").strip()
     if len(message) > 1000:
         message = message[:1000] + "..."
-    suffix = f": {message}" if message else ""
-    return f"Image {operation} request failed ({response.status_code}){suffix}"
+    return f"Image {operation} request failed ({response.status_code})" + (f": {message}" if message else "")
 
 
 def response_json(operation: str, response) -> dict:
@@ -328,21 +298,15 @@ def save_result(payload: dict, out_dir: Path, prefix: str, output_format: str) -
 
 def generation_request(args: argparse.Namespace, prompt: str, headers: dict) -> dict:
     body = {
-        "model": args.model,
-        "prompt": prompt,
-        "size": args.size,
-        "quality": args.quality,
-        "output_format": args.output_format,
-        "n": args.n,
+        "model": args.model, "prompt": prompt, "size": args.size, "quality": args.quality,
+        "output_format": args.output_format, "n": args.n,
     }
-    if args.background:
+    if getattr(args, "background", None):
         body["background"] = args.background
     try:
         response = requests.post(
             f"{args.base_url.rstrip('/')}/images/generations",
-            headers={**headers, "Content-Type": "application/json"},
-            json=body,
-            timeout=args.timeout,
+            headers={**headers, "Content-Type": "application/json"}, json=body, timeout=args.timeout,
         )
     except requests.Timeout as exc:
         raise SystemExit(f"Image generation timed out after {args.timeout}s.") from exc
@@ -352,7 +316,7 @@ def generation_request(args: argparse.Namespace, prompt: str, headers: dict) -> 
 
 
 def edit_request(args: argparse.Namespace, prompt: str, headers: dict) -> dict:
-    files = []
+    files: list[tuple] = []
     handles = []
     try:
         for path_text in args.input_image:
@@ -363,25 +327,27 @@ def edit_request(args: argparse.Namespace, prompt: str, headers: dict) -> dict:
             handles.append(handle)
             mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             files.append(("image[]", (path.name, handle, mime)))
+
+        mask_path_text = getattr(args, "mask", None)
+        if mask_path_text:
+            mask_path = Path(mask_path_text)
+            handle = mask_path.open("rb")
+            handles.append(handle)
+            mime = mimetypes.guess_type(mask_path.name)[0] or "application/octet-stream"
+            files.append(("mask", (mask_path.name, handle, mime)))
+
         data = {
-            "model": args.model,
-            "prompt": prompt,
-            "size": args.size,
-            "quality": args.quality,
-            "output_format": args.output_format,
-            "n": str(args.n),
+            "model": args.model, "prompt": prompt, "size": args.size, "quality": args.quality,
+            "output_format": args.output_format, "n": str(args.n),
         }
-        if args.background:
+        if getattr(args, "background", None):
             data["background"] = args.background
-        if args.input_fidelity:
+        if getattr(args, "input_fidelity", None):
             data["input_fidelity"] = args.input_fidelity
         try:
             response = requests.post(
-                f"{args.base_url.rstrip('/')}/images/edits",
-                headers=headers,
-                data=data,
-                files=files,
-                timeout=args.timeout,
+                f"{args.base_url.rstrip('/')}/images/edits", headers=headers,
+                data=data, files=files, timeout=args.timeout,
             )
         except requests.Timeout as exc:
             raise SystemExit(f"Image edit timed out after {args.timeout}s.") from exc
@@ -430,33 +396,26 @@ def provider_check(args: argparse.Namespace, third_party: bool) -> int:
     }
     try:
         response = requests.get(f"{base}/models", headers=headers, timeout=args.timeout)
-        model_info = {"http_status": int(response.status_code)}
+        info = {"http_status": int(response.status_code), "model_advertised": None}
         if response.ok:
             try:
                 payload = response.json()
-                items = payload.get("data", []) if isinstance(payload, dict) else []
-                ids = {str(item.get("id")) for item in items if isinstance(item, dict) and item.get("id")}
-                model_info.update({"status": "reachable", "model_advertised": args.model in ids if ids else None})
+                ids = {str(item.get("id")) for item in (payload.get("data", []) if isinstance(payload, dict) else []) if isinstance(item, dict) and item.get("id")}
+                info.update({"status": "reachable", "model_advertised": args.model in ids if ids else None})
             except ValueError:
-                model_info.update({"status": "reachable-non-json", "model_advertised": None})
+                info["status"] = "reachable-non-json"
         elif response.status_code == 404:
-            model_info.update({"status": "missing", "model_advertised": None})
+            info["status"] = "missing"
         else:
-            model_info.update({"status": "http-error", "model_advertised": None})
-        result["models_endpoint"] = model_info
+            info["status"] = "http-error"
+        result["models_endpoint"] = info
     except requests.Timeout:
         result["models_endpoint"] = {"status": "timeout", "http_status": None, "model_advertised": None}
     except requests.RequestException as exc:
-        result["models_endpoint"] = {
-            "status": "network-error",
-            "http_status": None,
-            "model_advertised": None,
-            "detail": str(exc)[:300],
-        }
+        result["models_endpoint"] = {"status": "network-error", "http_status": None, "model_advertised": None, "detail": str(exc)[:300]}
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    generation_status = result["generation_endpoint"]["status"]
-    if generation_status in {"missing", "network-error", "timeout", "server-error"}:
+    if result["generation_endpoint"]["status"] in {"missing", "network-error", "timeout", "server-error"}:
         print("Provider check did not confirm a usable /images/generations route.", file=sys.stderr)
         return 1
     return 0
@@ -467,12 +426,13 @@ def main() -> int:
     parser.add_argument("prompt", nargs="?")
     parser.add_argument("--prompt-file")
     parser.add_argument("--input-image", action="append", default=[], help="Input image for editing; may be repeated.")
-    parser.add_argument("--model", default=None, help="Explicit GPT Image model override.")
-    parser.add_argument("--base-url", default=None, help="Explicit endpoint override. Without this flag, the active Codex/CC Switch provider is preferred.")
-    parser.add_argument("--codex-config", help="Optional config.toml override for testing/advanced use.")
-    parser.add_argument("--codex-auth", help="Optional auth.json override for testing/advanced use.")
-    parser.add_argument("--no-codex-config", action="store_true", help="Ignore ~/.codex live provider files and use explicit/env/default connection settings.")
-    parser.add_argument("--allow-third-party", action="store_true", default=env_flag("OPENAI_ALLOW_THIRD_PARTY"), help="Trust a custom URL supplied outside the active Codex config.")
+    parser.add_argument("--mask", help="Optional edit mask. Must match the primary input image format/size and contain alpha.")
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--base-url", default=None)
+    parser.add_argument("--codex-config")
+    parser.add_argument("--codex-auth")
+    parser.add_argument("--no-codex-config", action="store_true")
+    parser.add_argument("--allow-third-party", action="store_true", default=env_flag("OPENAI_ALLOW_THIRD_PARTY"))
     parser.add_argument("--api-key")
     parser.add_argument("--api-key-file")
     parser.add_argument("--quality", choices=("low", "medium", "high", "auto"), default=os.getenv("OPENAI_IMAGE_QUALITY", "high"))
@@ -480,19 +440,17 @@ def main() -> int:
     parser.add_argument("--output-format", choices=("png", "jpeg", "webp"), default=os.getenv("OPENAI_IMAGE_OUTPUT_FORMAT", "png"))
     parser.add_argument("--background", choices=("transparent", "opaque", "auto"))
     parser.add_argument(
-        "--input-fidelity",
-        choices=("low", "high"),
-        default=None,
-        help="Only for image models/endpoints that support it. GPT Image 2 rejects this option because image inputs are always high fidelity.",
+        "--input-fidelity", choices=("low", "high"), default=None,
+        help="Only for models/endpoints that support it. GPT Image 2 rejects it because inputs are always high fidelity.",
     )
     parser.add_argument("--n", type=int, default=1)
     parser.add_argument("--out-dir", default="output/image")
     parser.add_argument("--prefix", default="engineering-figure-gpt")
     parser.add_argument("--timeout", type=int, default=240)
-    parser.add_argument("--highres", action="store_true", help="Use OPENAI_IMAGE_HIGHRES_MODEL and fail closed when it is not configured.")
-    parser.add_argument("--final", action="store_true", help="Alias for final-quality/high-resolution routing.")
-    parser.add_argument("--check-provider", action="store_true", help="Probe the resolved provider without generating an image.")
-    parser.add_argument("--dry-run", action="store_true", help="Resolve and validate configuration without calling the API.")
+    parser.add_argument("--highres", action="store_true")
+    parser.add_argument("--final", action="store_true")
+    parser.add_argument("--check-provider", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     prompt = "" if args.check_provider else read_prompt(args)
@@ -500,12 +458,10 @@ def main() -> int:
     args.model, final_requested = resolve_model(args, prompt)
     resolve_output_size(args)
     third_party = validate_target(args)
+    mask_info = validate_edit_inputs(args)
 
     if third_party and getattr(args, "_connection_source", None) == "codex-config":
-        print(
-            f"[INFO] Reusing active Codex provider '{getattr(args, '_codex_provider', None)}': {args.base_url}",
-            file=sys.stderr,
-        )
+        print(f"[INFO] Reusing active Codex provider '{getattr(args, '_codex_provider', None)}': {args.base_url}", file=sys.stderr)
     elif third_party:
         print(f"[WARN] Using explicitly approved third-party relay: {args.base_url}", file=sys.stderr)
 
@@ -513,26 +469,22 @@ def main() -> int:
         return provider_check(args, third_party)
 
     if args.dry_run:
-        print(
-            json.dumps(
-                {
-                    "mode": "edit" if args.input_image else "generate",
-                    "model": args.model,
-                    "connection_source": getattr(args, "_connection_source", None),
-                    "codex_provider": getattr(args, "_codex_provider", None),
-                    "base_url": args.base_url,
-                    "third_party": third_party,
-                    "final_quality_requested": final_requested,
-                    "size": args.size,
-                    "quality": args.quality,
-                    "output_format": args.output_format,
-                    "input_fidelity": args.input_fidelity,
-                    "n": args.n,
-                    "prompt_chars": len(prompt),
-                },
-                ensure_ascii=False,
-            )
-        )
+        print(json.dumps({
+            "mode": "edit" if args.input_image else "generate",
+            "model": args.model,
+            "connection_source": getattr(args, "_connection_source", None),
+            "codex_provider": getattr(args, "_codex_provider", None),
+            "base_url": args.base_url,
+            "third_party": third_party,
+            "final_quality_requested": final_requested,
+            "size": args.size,
+            "quality": args.quality,
+            "output_format": args.output_format,
+            "input_fidelity": args.input_fidelity,
+            "mask": mask_info,
+            "n": args.n,
+            "prompt_chars": len(prompt),
+        }, ensure_ascii=False))
         return 0
 
     key = read_key(args)
