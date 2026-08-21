@@ -25,6 +25,7 @@ domain/content template
 + publication image-quality contract
 + user style constraints
 + edit preservation contract (for existing images)
++ optional spatial mask constraint (for localized edits)
 ```
 
 Quality profiles are in `assets/prompt-templates/image-quality-contracts.json`:
@@ -46,7 +47,7 @@ Read `references/image-quality-contract.md` when image quality or output size ma
    - `assets/prompt-templates/engineering-figure-templates.json`
    - `assets/prompt-templates/mathematical-modeling-templates.json`
 5. Route generation through `scripts/efg.py image` so the selected quality contract is injected.
-6. For existing images, choose the narrowest edit mode and explicitly preserve everything that should not change.
+6. For existing images, choose the narrowest edit mode and explicitly preserve everything that should not change. Use `--mask` when a reliable spatial change region can be supplied.
 7. After generation/editing, apply `references/visual-qa.md`.
 8. If a concrete raster size/format/aspect matters, verify the actual returned artifact with `scripts/efg.py verify-image`.
 9. Fix localized failures with `edit --mode correct` rather than blindly regenerating the full figure.
@@ -99,6 +100,27 @@ Modes:
 
 Use repeatable `--preserve` and `--allow-change` to define the change boundary. Extra `--reference-image` files may guide style/reconstruction but must not silently override the primary figure's scientific content.
 
+### Mask-guided localized edits
+
+For a localized correction, `--mask` can add a spatial constraint on top of the semantic preservation contract:
+
+```bash
+python scripts/efg.py edit figure.png \
+  "Fix only the mislabeled module" \
+  --mode correct \
+  --mask edit-mask.png \
+  --preserve "all arrows and unaffected labels"
+```
+
+Before upload, the portable path validates that the mask:
+
+- is smaller than 50 MB;
+- has exactly the same dimensions as the primary edit image;
+- uses the same image format as the primary edit image;
+- contains an alpha channel.
+
+When a mask is present, the resolved edit prompt also preserves all content outside the masked area except minimal blending needed at the boundary. Treat the mask as strong spatial guidance, **not** as a guaranteed pixel-perfect boundary; still compare the edited output against the source during Visual QA.
+
 ### GPT Image 2 edit policy
 
 For `gpt-image-2`, **do not send `input_fidelity`**. GPT Image 2 processes every input image at high fidelity automatically and the API does not allow changing this parameter.
@@ -123,7 +145,7 @@ Before final handoff, check in this order:
 4. arrows/line quality;
 5. color/contrast;
 6. raster clarity at native and approximately 50% scale;
-7. source-vs-result preservation for edits.
+7. source-vs-result preservation for edits, including changes outside a supplied mask.
 
 Reject malformed labels, clipping, overlap, wrong/missing arrows, invented detail, blur/ghosting, unreadable micro-text, or unrelated edit changes.
 
@@ -233,6 +255,7 @@ For reusable or showcase work, preserve the evidence chain described in `referen
 python scripts/efg.py prompt --figure-template problem-analysis --quality-profile paper --lang zh "建模背景"
 python scripts/efg.py image "建模背景" --figure-template full-modeling-pipeline --lang zh --dry-run
 python scripts/efg.py edit figure.png "只修正第二个模块的错别字" --mode correct --dry-run
+python scripts/efg.py edit figure.png "只修改掩膜区域" --mode correct --mask edit-mask.png --dry-run
 python scripts/efg.py provider-check
 python scripts/efg.py verify-image output/figure.png --expected-size 1536x1024 --require-format png
 python scripts/efg.py plot request.json --spec-out output/spec.json --out-path output/figure --formats png pdf svg
