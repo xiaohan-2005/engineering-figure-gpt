@@ -87,7 +87,6 @@ def resolve_edit_canvas(args: argparse.Namespace) -> int:
 
     model = intended_image_model(args)
     if not model:
-        # The lower-level generator remains responsible for fail-closed final-model routing.
         return 0
 
     if not is_gpt_image_2(model):
@@ -121,7 +120,7 @@ def resolve_edit_canvas(args: argparse.Namespace) -> int:
 
 def add_image_runtime_options(parser: argparse.ArgumentParser, include_input_images: bool = True) -> None:
     if include_input_images:
-        parser.add_argument("--input-image", action="append", default=[], help="Input image for editing; may be repeated.")
+        parser.add_argument("--input-image", action="append", default=[], help="Input image for legacy low-level editing; prefer `efg edit` for constrained edits.")
     parser.add_argument("--model")
     parser.add_argument("--base-url")
     parser.add_argument("--allow-third-party", action="store_true")
@@ -149,10 +148,13 @@ def add_image_runtime_options(parser: argparse.ArgumentParser, include_input_ima
     parser.add_argument("--dry-run", action="store_true")
 
 
-def image_runtime_args(args: argparse.Namespace) -> list[str]:
+def image_runtime_args(args: argparse.Namespace, *, include_input_images: bool = True) -> list[str]:
     parts: list[str] = []
-    for value in getattr(args, "input_image", []) or []:
-        parts += ["--input-image", str(value)]
+    if include_input_images:
+        values = getattr(args, "input_image", []) or []
+        if isinstance(values, (list, tuple)):
+            for value in values:
+                parts += ["--input-image", str(value)]
     for attr, flag in (
         ("model", "--model"),
         ("base_url", "--base-url"),
@@ -257,7 +259,7 @@ def cmd_prompt(args: argparse.Namespace) -> int:
 def cmd_image(args: argparse.Namespace) -> int:
     profile = resolve_quality_profile(args)
     apply_profile_defaults(args, profile, editing=False)
-    runtime = image_runtime_args(args)
+    runtime = image_runtime_args(args, include_input_images=True)
     with tempfile.TemporaryDirectory(prefix="efg-prompt-") as tmp:
         prompt_path = resolve_prompt_output_path(args.save_prompt, tmp)
         if args.figure_template:
@@ -301,7 +303,7 @@ def cmd_edit(args: argparse.Namespace) -> int:
     canvas_code = resolve_edit_canvas(args)
     if canvas_code:
         return canvas_code
-    runtime = image_runtime_args(args)
+    runtime = image_runtime_args(args, include_input_images=False)
     with tempfile.TemporaryDirectory(prefix="efg-edit-") as tmp:
         prompt_path = resolve_prompt_output_path(args.save_prompt, tmp)
         build = [
