@@ -7,8 +7,8 @@ Connection priority:
 3. legacy OPENAI_* environment variables/files;
 4. official OpenAI defaults.
 
-This lets command-line Codex users who switch providers with CC Switch reuse the same
-live provider configuration without maintaining a second API configuration for this skill.
+The script is GPT-only and keeps model-specific policy explicit instead of assuming
+that every OpenAI-compatible relay implements every Images parameter identically.
 """
 
 from __future__ import annotations
@@ -29,9 +29,15 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from codex_provider_config import load_codex_live_provider
+from image_model_policy import (
+    is_gpt_image_2,
+    source_preserving_gpt_image_2_size,
+    validate_gpt_image_2_size,
+)
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-image-2"
+DEFAULT_SIZE = "1536x1024"
 OFFICIAL_HOST = "api.openai.com"
 FINAL_HINTS = (
     "2k",
@@ -67,13 +73,7 @@ def is_official_base_url(base_url: str) -> bool:
 
 
 def resolve_connection(args: argparse.Namespace) -> dict:
-    """Resolve endpoint/key source while preferring the active Codex provider.
-
-    A non-OpenAI endpoint selected by the active Codex config is considered explicitly
-    user-selected/trusted for this process. A custom URL passed separately via --base-url or
-    OPENAI_BASE_URL still requires --allow-third-party / OPENAI_ALLOW_THIRD_PARTY=1.
-    """
-
+    """Resolve endpoint/key source while preferring the active Codex provider."""
     explicit_base = str(getattr(args, "base_url", None) or "").strip()
     codex_info = None
     source = "official-default"
@@ -197,6 +197,33 @@ def resolve_model(args: argparse.Namespace, prompt: str = "") -> tuple[str, bool
     return os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL, False
 
 
+def resolve_output_size(args: argparse.Namespace) -> None:
+    """Resolve a concrete output size after model selection.
+
+    GPT Image 2 edits preserve the primary input canvas when it is legal. If the source
+    dimensions are not legal but the aspect ratio can be preserved, use the nearest legal
+    canvas and report that adjustment. Other models retain the historical default unless
+    the caller/provider supplied a size explicitly.
+    """
+    if args.size:
+        return
+    if args.input_image and is_gpt_image_2(args.model):
+        try:
+            size, exact = source_preserving_gpt_image_2_size(args.input_image[0])
+        except Exception as exc:
+            raise SystemExit(f"Could not resolve GPT Image 2 edit canvas from the source image: {exc}") from exc
+        args.size = size
+        if exact:
+            print(f"[INFO] Preserving source canvas for GPT Image 2 edit: {size}", file=sys.stderr)
+        else:
+            print(
+                f"[WARN] Source canvas is not a legal GPT Image 2 output size; using nearest legal canvas {size}.",
+                file=sys.stderr,
+            )
+        return
+    args.size = DEFAULT_SIZE
+
+
 def validate_target(args: argparse.Namespace) -> bool:
     args.base_url = normalized_base_url(args.base_url)
     third_party = not is_official_base_url(args.base_url)
@@ -211,6 +238,7 @@ def validate_target(args: argparse.Namespace) -> bool:
             "OPENAI_ALLOW_THIRD_PARTY=1 after you trust that endpoint. Active Codex/CC Switch "
             "providers are trusted automatically because the user already selected them there."
         )
+
     model = str(getattr(args, "model", ""))
     if not model.startswith("gpt-image-"):
         raise SystemExit("Only GPT Image model names are allowed by this GPT-only skill.")
@@ -218,6 +246,18 @@ def validate_target(args: argparse.Namespace) -> bool:
         raise SystemExit("--n must be at least 1.")
     if int(getattr(args, "timeout", 240)) <= 0:
         raise SystemExit("--timeout must be positive.")
+
+    if is_gpt_image_2(model):
+        if getattr(args, "input_fidelity", None):
+            raise SystemExit(
+                "GPT Image 2 does not accept --input-fidelity. Omit it: GPT Image 2 always processes image inputs at high fidelity."
+            )
+        if getattr(args, "background", None) == "transparent":
+            raise SystemExit("GPT Image 2 does not currently support transparent backgrounds.")
+        try:
+            validate_gpt_image_2_size(str(args.size))
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
     return third_party
 
 
@@ -436,10 +476,15 @@ def main() -> int:
     parser.add_argument("--api-key")
     parser.add_argument("--api-key-file")
     parser.add_argument("--quality", choices=("low", "medium", "high", "auto"), default=os.getenv("OPENAI_IMAGE_QUALITY", "high"))
-    parser.add_argument("--size", default=os.getenv("OPENAI_IMAGE_SIZE", "1536x1024"))
+    parser.add_argument("--size", default=os.getenv("OPENAI_IMAGE_SIZE"))
     parser.add_argument("--output-format", choices=("png", "jpeg", "webp"), default=os.getenv("OPENAI_IMAGE_OUTPUT_FORMAT", "png"))
     parser.add_argument("--background", choices=("transparent", "opaque", "auto"))
-    parser.add_argument("--input-fidelity", choices=("low", "high"), default=None, help="Explicit input fidelity for image edits when supported by the selected endpoint/model.")
+    parser.add_argument(
+        "--input-fidelity",
+        choices=("low", "high"),
+        default=None,
+        help="Only for image models/endpoints that support it. GPT Image 2 rejects this option because image inputs are always high fidelity.",
+    )
     parser.add_argument("--n", type=int, default=1)
     parser.add_argument("--out-dir", default="output/image")
     parser.add_argument("--prefix", default="engineering-figure-gpt")
@@ -453,6 +498,7 @@ def main() -> int:
     prompt = "" if args.check_provider else read_prompt(args)
     resolve_connection(args)
     args.model, final_requested = resolve_model(args, prompt)
+    resolve_output_size(args)
     third_party = validate_target(args)
 
     if third_party and getattr(args, "_connection_source", None) == "codex-config":
@@ -480,6 +526,7 @@ def main() -> int:
                     "size": args.size,
                     "quality": args.quality,
                     "output_format": args.output_format,
+                    "input_fidelity": args.input_fidelity,
                     "n": args.n,
                     "prompt_chars": len(prompt),
                 },
