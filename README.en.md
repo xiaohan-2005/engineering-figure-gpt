@@ -24,6 +24,7 @@ domain/content template
 + publication image-quality contract
 + user style constraints
 + edit preservation contract (when editing)
++ optional spatial mask constraint (localized edits)
 ```
 
 Quality profiles live in `assets/prompt-templates/image-quality-contracts.json`:
@@ -71,6 +72,22 @@ Edit modes:
 - `redraw`: clean reconstruction while preserving authoritative scientific meaning and labels.
 
 Use repeatable `--preserve` and `--allow-change` options to make the edit boundary explicit. Extra `--reference-image` files may guide style/reconstruction, but the primary source remains the scientific baseline.
+
+### Mask-guided localized edits
+
+For a bounded correction, add a spatial mask on top of the semantic preservation contract:
+
+```bash
+python scripts/efg.py edit figure.png \
+  "Fix only the mislabeled module" \
+  --mode correct \
+  --mask edit-mask.png \
+  --preserve "all arrows and unaffected labels"
+```
+
+Before upload, the portable path validates that the mask is smaller than 50 MB, has exactly the same dimensions and image format as the primary figure, and contains an alpha channel. The resolved edit prompt also preserves content outside the masked area except minimal blending needed at the boundary.
+
+A mask is **strong spatial guidance, not a pixel-perfect guarantee**. Source-vs-result Visual QA is still required; unrelated changes outside the intended region fail `correct` mode.
 
 ### GPT Image 2 edit policy
 
@@ -135,7 +152,7 @@ API success is not figure success. Check:
 4. arrows and line quality;
 5. color and contrast;
 6. clarity at native and roughly 50% scale;
-7. source-vs-result preservation for edits.
+7. source-vs-result preservation for edits, including unintended changes outside a supplied mask.
 
 Route failures narrowly:
 
@@ -229,7 +246,7 @@ Run the source-side Wizard against the Runtime:
   -SkillDir "$HOME/.codex/skills/engineering-figure-gpt"
 ```
 
-The Wizard asks separately for the visual quality profile and whether to use the `--final` model route.
+The Wizard asks separately for the visual quality profile and whether to use the `--final` model route, and Edit Mode can optionally accept a spatial mask.
 
 The normal installer performs offline Plot/Edit/Verifier smoke tests without image API cost. A paid live image check is opt-in:
 
@@ -243,6 +260,7 @@ The normal installer performs offline Plot/Edit/Verifier smoke tests without ima
 python scripts/efg.py prompt --figure-template problem-analysis --quality-profile paper --lang en "modeling background"
 python scripts/efg.py image "modeling background" --figure-template full-modeling-pipeline --lang en --dry-run
 python scripts/efg.py edit figure.png "Fix one label only" --mode correct --dry-run
+python scripts/efg.py edit figure.png "Change only the masked region" --mode correct --mask edit-mask.png --dry-run
 python scripts/efg.py verify-image output/figure.png --expected-size 1536x1024 --require-format png
 python scripts/efg.py provider-check
 python scripts/efg.py plot request.json --spec-out output/spec.json --out-path output/figure --formats png pdf svg
