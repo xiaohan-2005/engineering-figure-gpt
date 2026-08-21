@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Sync a pruned execution runtime of Engineering Figure GPT into Codex.
 
-Repository CI validators, showcase files, schemas, examples, and release-only docs stay
-in the source checkout. The installed Skill keeps agent guidance plus user-facing runtime
-commands, diagnostics, and the interactive wizard.
+Repository CI validators, showcase files, schemas, examples, installer diagnostics, and
+interactive setup helpers stay in the source checkout. The installed Skill keeps only
+files needed by the agent or its execution commands.
 """
 
 from __future__ import annotations
@@ -21,14 +21,12 @@ RUNTIME_SCRIPT_ALLOW = {
     "build_engineering_figure_prompt.py",
     "build_image_edit_prompt.py",
     "build_plot_spec.py",
-    "check_setup.ps1",
     "codex_provider_config.py",
     "efg.py",
     "generate_image.py",
     "image_model_policy.py",
     "plot_publication_figure.py",
     "verify_image_output.py",
-    "wizard.ps1",
 }
 
 RUNTIME_REFERENCE_ALLOW = {
