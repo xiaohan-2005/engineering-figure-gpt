@@ -4,26 +4,56 @@
 
 A Codex-native research-figure skill for engineering, computer science, AI, data science, electronics, and mathematical modeling.
 
-Engineering Figure GPT separates **conceptual composition** from **numeric truth**:
+Engineering Figure GPT separates **scientific content**, **image quality**, **editing scope**, and **numeric truth**:
 
-- `image` mode uses GPT image generation for conceptual/schematic content;
-- `plot` mode renders exact quantitative figures locally;
-- `mixed` mode keeps quantitative panels local and uses GPT only for conceptual panels.
+- `image`: generate new conceptual/schematic research figures with a reusable publication-quality contract;
+- `edit`: correct, revise, restyle, or redraw an existing research figure with explicit preservation rules;
+- `plot`: render exact quantitative figures locally;
+- `mixed`: keep quantitative panels local and use GPT only for conceptual panels.
 
-Core rule: **never let image generation silently rewrite scientific data, axes, uncertainty, formulas, or benchmark geometry.**
+Core rule: **never let image generation silently rewrite scientific data, axes, uncertainty, formulas, benchmark geometry, or unrelated parts of an existing figure.** A successful image API response is not automatically a paper-ready figure.
 
 [中文说明](README.zh-CN.md) · [Installation](INSTALL.md) · [Showcase](docs/showcase.md)
 
-## One-command image workflow
+## Image Pipeline v2: content contract + quality contract
 
-Inside Codex, prefer the built-in GPT image capability. For portable/reproducible execution, the repository includes a GPT Image-compatible CLI that defaults to `gpt-image-2` and official OpenAI.
+A domain template determines what the figure should communicate. A separate reusable image-quality contract determines how clearly and robustly it must render.
 
-A figure template and scientific background can now be resolved and generated in one command:
+```text
+domain/content template
+        +
+publication image-quality contract
+        +
+user style note
+        +
+edit preservation contract (when editing)
+```
+
+Quality profiles live in:
+
+```text
+assets/prompt-templates/image-quality-contracts.json
+```
+
+Profiles:
+
+- `draft`: structural exploration;
+- `paper`: default paper-ready constraints;
+- `final`: strongest final-export constraints.
+
+The `paper` and `final` profiles explicitly require safe outer margins, large readable label regions, strong contrast, disciplined alignment/spacing, crisp arrows and borders, restrained semantic colors, and essential labels that remain readable at roughly 50% native size / intended paper width. They reject unreadable micro-text, clipping, blur/ghosting, decorative pseudo-technical fine print, and unrelated scientific invention.
+
+See [Image Quality Contract](references/image-quality-contract.md), [Publication Figure Design](references/publication-figure-design.md), and [Visual QA](references/visual-qa.md).
+
+## Image mode: generate a new conceptual figure
+
+For portable/reproducible execution, route image requests through `efg image` so the selected quality contract is injected into the resolved prompt.
 
 ```bash
 python scripts/efg.py image \
   "A retrieval system with OCR, embeddings, reranking, and answer synthesis" \
   --figure-template system-architecture \
+  --quality-profile paper \
   --lang en \
   --save-prompt output/final-prompt.txt \
   --dry-run
@@ -31,45 +61,72 @@ python scripts/efg.py image \
 
 Remove `--dry-run` only when a live request is intended.
 
-## OpenAI-compatible relay support
+Raw prompts without a figure template also receive the selected quality contract when routed through `efg image`.
 
-A custom relay/base URL is supported only after explicit trust:
+## Edit mode: preserve what should not change
+
+Image editing is a first-class workflow rather than a hidden `--input-image` option.
 
 ```bash
-python scripts/efg.py image \
-  "technical background" \
-  --figure-template system-architecture \
-  --base-url https://relay.example/v1 \
-  --allow-third-party
+python scripts/efg.py edit figure.png \
+  "Change Encoder to Cross-Attention Encoder only" \
+  --mode correct \
+  --preserve "all arrow endpoints" \
+  --save-prompt output/edit-prompt.txt \
+  --dry-run
 ```
 
-Equivalent environment variables:
+Four modes define the permitted scope:
+
+| Mode | Behavior |
+|---|---|
+| `correct` | smallest possible localized correction; preserve everything unrelated |
+| `revise` | requested local content/structure change; keep unaffected content stable |
+| `restyle` | visual-style change only; lock scientific content and relationships |
+| `redraw` | clean reconstruction while preserving scientific meaning and canonical labels |
+
+Repeat `--preserve` and `--allow-change` to make the edit boundary explicit:
+
+```bash
+--preserve "module positions"
+--preserve "all labels except the requested one"
+--allow-change "Encoder label text"
+```
+
+Additional style/visual references may be supplied with repeatable `--reference-image`. The primary input image remains the scientific/content baseline.
+
+Edit mode defaults to `input_fidelity=high` unless explicitly overridden.
+
+See [Edit Mode](references/edit-mode.md).
+
+## Visual QA: API success is not figure success
+
+Before paper use, inspect conceptual figures in this order:
+
+1. scientific fidelity;
+2. text integrity;
+3. layout integrity;
+4. arrows and line quality;
+5. color and contrast;
+6. raster clarity at native and approximately 50% scale;
+7. source-vs-result preservation for edited figures.
+
+Do not regenerate the entire image for every localized problem:
 
 ```text
-OPENAI_BASE_URL=https://relay.example/v1
-OPENAI_ALLOW_THIRD_PARTY=1
-OPENAI_IMAGE_MODEL=gpt-image-2
+typo / wrong arrow / minor clipping -> edit --mode correct
+requested content change            -> edit --mode revise
+style-only problem                  -> edit --mode restyle
+globally unusable layout            -> edit --mode redraw or regenerate
 ```
 
-The explicit trust gate exists because the relay may receive the configured API key and any images used in edit requests.
+See [Visual QA](references/visual-qa.md).
 
-### Relay compatibility probe
-
-Before spending image credits, probe the configured endpoint without generating an image:
-
-```bash
-python scripts/efg.py provider-check \
-  --base-url https://relay.example/v1 \
-  --allow-third-party
-```
-
-The probe checks basic model/route exposure for `/models`, `/images/generations`, and `/images/edits`. It cannot guarantee that every relay implements every OpenAI Images parameter identically.
-
-## Final / high-resolution routing
+## Final/high-resolution: model tier is not raster size
 
 Routine image generation uses `OPENAI_IMAGE_MODEL` and otherwise defaults to `gpt-image-2`.
 
-Final-quality intent uses `OPENAI_IMAGE_HIGHRES_MODEL` or an explicit `--model`:
+Final-quality intent uses `OPENAI_IMAGE_HIGHRES_MODEL` or an explicit image `--model`:
 
 ```bash
 python scripts/efg.py image \
@@ -78,27 +135,91 @@ python scripts/efg.py image \
   --final
 ```
 
-If final/high-resolution output is requested but no final-quality model is configured, the CLI **fails closed**. It does not silently switch provider, reduce quality/size, or downgrade to the routine model.
+If final/high-resolution output is requested but no final-quality image model is configured, the CLI fails closed rather than silently downgrading.
+
+However, a high-resolution model route does **not** guarantee a particular raster dimension. Provider canvas size is requested separately with `--size`, and the actual returned artifact can be checked objectively:
+
+```bash
+python scripts/efg.py verify-image output/figure.png \
+  --expected-size 1536x1024 \
+  --require-format png
+```
+
+Minimum acceptance gate:
+
+```bash
+python scripts/efg.py verify-image output/figure.png \
+  --min-width 1500 \
+  --min-height 1000 \
+  --min-megapixels 1.5
+```
+
+Live image/edit requests routed through `efg image` or `efg edit` now automatically verify that returned raster files are readable and that concrete requested size/format settings were honored. This catches compatible relays that silently ignore `--size`.
+
+Pixel dimensions still do not prove text clarity or scientific correctness, so visual QA remains required.
 
 See [Final / High-Resolution Policy](references/highres-policy.md).
 
-## Exact plotting: request → spec → figure in one command
+## Codex CLI + CC Switch provider reuse
+
+For command-line Codex users, the portable image path can reuse the active provider from:
+
+```text
+~/.codex/config.toml
+~/.codex/auth.json
+```
+
+Connection resolution:
+
+```text
+explicit CLI override
+        ↓
+active Codex / CC Switch provider
+        ↓
+legacy OPENAI_* fallback
+        ↓
+official OpenAI default
+```
+
+Inspect the sanitized active provider:
+
+```bash
+python scripts/codex_provider_config.py
+```
+
+Probe image routes before spending credits:
+
+```bash
+python scripts/efg.py provider-check
+```
+
+A non-OpenAI endpoint already selected by the active Codex provider is treated as user-selected. A manually supplied relay still requires explicit trust:
+
+```bash
+python scripts/efg.py image \
+  "technical background" \
+  --figure-template system-architecture \
+  --base-url https://relay.example/v1 \
+  --allow-third-party
+```
+
+The relay may receive the configured API key and any input images used for editing. Provider checks can confirm basic route/model exposure, but not perfect compatibility for every image parameter.
+
+## Exact plotting: request → spec → figure
 
 Natural language is the user-facing interface; JSON is an internal contract.
-
-The internal chain is:
 
 ```text
 concise Plot Request (`kind`)
         ↓
-  build_plot_spec.py
+build_plot_spec.py
         ↓
 normalized Plot Spec (`type`)
         ↓
 plot_publication_figure.py
 ```
 
-The user-facing command now runs the full chain:
+One-command route:
 
 ```bash
 python scripts/efg.py plot request.json \
@@ -117,34 +238,18 @@ Supported deterministic panel intents include grouped bars, error bars, annotati
 
 See [Publication Plot API](references/publication-plot-api.md) and [Publication Chart Patterns](references/publication-chart-patterns.md).
 
-## Mathematical modeling is now a dedicated domain pack
+## Mathematical modeling domain pack
 
-The repository ships two prompt packs:
+The repository ships:
 
 ```text
 assets/prompt-templates/engineering-figure-templates.json
 assets/prompt-templates/mathematical-modeling-templates.json
 ```
 
-The modeling pack includes dedicated templates for:
+The modeling pack includes problem analysis, Q1/Q2/Q3 dependencies, preprocessing, forecasting, classification, clustering, optimization formulation, multi-objective/Pareto workflows, spatial/network modeling, evaluation systems, sensitivity/robustness analysis, decision frameworks, and end-to-end modeling pipelines.
 
-- problem analysis
-- Q1/Q2/Q3 dependencies
-- preprocessing
-- forecasting
-- classification
-- clustering
-- optimization formulation
-- multi-objective / Pareto workflows
-- spatial modeling
-- network modeling
-- evaluation systems
-- sensitivity analysis
-- robustness analysis
-- decision frameworks
-- end-to-end modeling pipelines
-
-List every available template:
+List all templates:
 
 ```bash
 python scripts/build_engineering_figure_prompt.py --list-templates
@@ -156,9 +261,9 @@ See [Mathematical Modeling Guidance](references/mathematical-modeling.md).
 
 ## Editable handoff
 
-Generated conceptual figures often need a final human-editable pass for labels, formulas, arrows, and journal layout.
+Generated conceptual figures may still need a deterministic human-editable pass for typography, formulas, panel letters, or final composition.
 
-The recommended conceptual handoff preserves:
+Recommended conceptual package:
 
 ```text
 brief.md
@@ -172,9 +277,7 @@ Exact plots should additionally preserve the request, normalized spec, and vecto
 
 See [Editable Figure Handoff](references/editable-figure-handoff.md).
 
-## Quick start
-
-### Install into Codex on Windows
+## Install into Codex on Windows
 
 ```powershell
 git clone https://github.com/xiaohan-2005/engineering-figure-gpt.git "$HOME/engineering-figure-gpt"
@@ -187,7 +290,21 @@ The installer synchronizes a pruned runtime package to:
 ~/.codex/skills/engineering-figure-gpt
 ```
 
-Repository-only docs, tests, examples, and CI files are not copied into the runtime package.
+The default install test now runs three offline chains without image API cost:
+
+```text
+Plot Request -> Spec -> Renderer -> PNG
+Edit Contract -> preservation-first dry-run prompt
+Raster Fixture -> verify-image size/format gate
+```
+
+Optional paid live image test:
+
+```powershell
+& "$HOME/engineering-figure-gpt/scripts/install_and_test.ps1" -TestLiveImage
+```
+
+The live test routes through the quality-constrained `efg image` workflow and verifies the actual returned raster size/format.
 
 Diagnostics:
 
@@ -201,19 +318,25 @@ Interactive wizard:
 & "$HOME/.codex/skills/engineering-figure-gpt/scripts/wizard.ps1"
 ```
 
-The wizard supports template selection, official OpenAI or a trusted relay, provider compatibility checks, final-quality routing, and one-command exact plotting.
+The wizard covers prompt building, image generation, constrained editing, raster verification, active Codex/CC Switch provider reuse, manual trusted relay override, provider probing, exact plots, and offline runtime checks.
 
 ## Unified CLI
 
 ```bash
-# prompt only
-python scripts/efg.py prompt --figure-template problem-analysis --lang en "modeling background"
+# prompt only + paper quality contract
+python scripts/efg.py prompt --figure-template problem-analysis --quality-profile paper --lang en "modeling background"
 
-# template -> final prompt -> image generation/editing
+# conceptual generation dry-run
 python scripts/efg.py image "modeling background" --figure-template full-modeling-pipeline --lang en --dry-run
 
-# relay compatibility check without image generation
-python scripts/efg.py provider-check --base-url https://relay.example/v1 --allow-third-party
+# localized image correction dry-run
+python scripts/efg.py edit figure.png "Fix the second label only" --mode correct --dry-run
+
+# objective raster verification
+python scripts/efg.py verify-image output/figure.png --expected-size 1536x1024 --require-format png
+
+# provider compatibility without image generation
+python scripts/efg.py provider-check
 
 # request -> normalized spec -> exact figure
 python scripts/efg.py plot request.json --spec-out output/spec.json --out-path output/figure --formats png pdf svg
@@ -221,7 +344,7 @@ python scripts/efg.py plot request.json --spec-out output/spec.json --out-path o
 # normalized spec -> exact figure
 python scripts/efg.py render output/spec.json --out-path output/figure --formats png pdf svg
 
-# offline runtime check
+# offline runtime checks
 python scripts/efg.py check
 ```
 
@@ -230,62 +353,66 @@ python scripts/efg.py check
 Conceptual evidence chain:
 
 ```text
-Figure Brief → Final Prompt → Real GPT Output → Verification
+Figure Brief
+-> Domain Prompt + Quality Contract
+-> Real GPT Output
+-> Visual QA
+-> optional constrained Edit
+-> Verification
 ```
 
 Quantitative evidence chain:
 
 ```text
-Plot Request → Normalized Plot Spec → Renderer → Real Output → Verification
+Plot Request -> Normalized Plot Spec -> Renderer -> Real Output -> Verification
 ```
-
-For final paper workflows, keep an editable handoff note where deterministic typography/composition still needs a final pass.
-
-See [Reproducibility Chain](references/reproducibility-chain.md) and [Reproducible Examples](docs/examples/README.md).
 
 ## Validation and CI
 
-The CI validates more than Python syntax:
+CI validates:
 
-- Python compilation
-- Skill metadata/runtime structure
-- UTF-8 and common mojibake patterns
-- engineering + mathematical-modeling prompt packs
-- local documentation links/images
-- Figure Brief / Plot Request / Plot Spec contracts
-- GPT image generation/edit request construction
-- official endpoint defaults and explicit relay trust
-- malformed URLs and embedded-credential rejection
-- final/high-resolution fail-closed routing
-- HTTP/network/timeout/malformed-response/empty-output behavior
-- local plot E2E rendering
-- pruned Codex runtime package
-- runtime token budget
-- offline CLI smoke checks
+- Python compilation;
+- Skill metadata/runtime structure;
+- UTF-8 and common mojibake patterns;
+- engineering + mathematical-modeling prompt packs;
+- reusable image-quality contract pack;
+- quality-contract prompt injection;
+- preservation-first edit behavior;
+- objective raster verification success/failure paths;
+- local documentation links/images;
+- Figure Brief / Plot Request / Plot Spec contracts;
+- GPT image generation/edit request construction;
+- Codex/CC Switch provider resolution and explicit relay trust;
+- final/high-resolution fail-closed routing;
+- HTTP/network/timeout/malformed-response/empty-output behavior;
+- local plot E2E rendering;
+- pruned runtime package/token budget;
+- offline CLI checks.
 
 ## Showcase status
 
-The current conceptual SVGs in [docs/showcase.md](docs/showcase.md) remain explicitly labeled as **layout previews**. They are not presented as fake GPT outputs.
+Current conceptual SVGs in [docs/showcase.md](docs/showcase.md) remain explicitly labeled as **layout previews** rather than fake GPT outputs.
 
-The remaining major product gap is a real reproducible showcase with:
+Real GPT conceptual showcase cases should be added only after the quality/edit/verification pipeline is stable and each case preserves a real:
 
 ```text
-brief + final prompt + real GPT output + verification
+brief + resolved prompt + output + visual verification
 ```
-
-and deterministic quantitative examples generated from their preserved Plot Request/Spec.
 
 ## Design principles
 
 1. Scientific fidelity before decoration.
-2. Numeric truth stays local and deterministic.
-3. Natural language is the user-facing interface; JSON is an internal contract.
-4. GPT is used where semantic composition helps.
-5. Chinese academic figures and mathematical modeling are primary use cases.
-6. Third-party relay usage must be explicit, never silent.
-7. Final-quality requests must not silently downgrade.
-8. Runtime context stays pruned and auditable.
-9. Outputs should remain reproducible and editable whenever practical.
+2. Image-quality constraints are separate from domain-content templates.
+3. API success is not final figure acceptance.
+4. Localized errors should be corrected locally rather than forcing a full redraw.
+5. High-resolution model routing and actual raster dimensions are separate acceptance concerns.
+6. Numeric truth stays local and deterministic.
+7. GPT is used where semantic composition helps.
+8. Chinese academic figures and mathematical modeling are primary use cases.
+9. Active Codex/CC Switch providers can be reused; manual relay overrides require explicit trust.
+10. Final-quality requests must not silently downgrade.
+11. Runtime context stays pruned and auditable.
+12. Outputs should remain reproducible and editable whenever practical.
 
 ## License
 
