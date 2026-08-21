@@ -73,6 +73,29 @@ Do not add/remove scientific modules, values, formulas, or claims.
 
 Use when a reference figure should be reconstructed more cleanly. Layout may improve, but scientific meaning, canonical labels, and supported relationships remain authoritative.
 
+## Spatial edit masks
+
+Use `--mask` when the requested change is localized and a spatial region can be supplied reliably:
+
+```bash
+python scripts/efg.py edit figure.png \
+  "Fix only the mislabeled module" \
+  --mode correct \
+  --mask edit-mask.png \
+  --preserve "all arrows and unaffected labels"
+```
+
+The portable edit path validates the mask before upload. It must:
+
+- be smaller than 50 MB;
+- match the primary input image dimensions exactly;
+- use the same image format as the primary input image;
+- contain an alpha channel.
+
+The mask is attached as the dedicated `mask` multipart field while the primary figure remains the first `image[]` input. When `efg edit --mask` is used, the resolved prompt also adds a preservation rule for all content outside the masked region, except minimal blending needed at the boundary.
+
+A mask is **strong spatial guidance, not a pixel-perfect guarantee**. Always compare the result against the source. Any unrelated change outside the intended region is still a failure in `correct` mode.
+
 ## Explicit preservation controls
 
 Repeat `--preserve` for anything that must stay fixed:
@@ -106,6 +129,8 @@ python scripts/efg.py edit current.png \
 
 The primary input remains the scientific/content baseline. Additional references must not silently override scientific content.
 
+If both reference images and a mask are supplied, the mask applies to the primary edit image. Reference images may guide style or reconstruction but do not redefine the allowed scientific change region.
+
 ## Quality profile
 
 Edit prompts receive the reusable image quality contract:
@@ -120,6 +145,6 @@ The quality profile controls prompt/rendering expectations. `--final` / `--highr
 
 After editing, compare the new image against the source.
 
-For `correct`, any unrelated movement, label rewrite, arrow change, palette drift, or geometry redesign is a failure even if the requested correction is present.
+For `correct`, any unrelated movement, label rewrite, arrow change, palette drift, geometry redesign, or change outside an intended mask region is a failure even if the requested correction is present.
 
 Also verify that the returned raster matches the resolved output canvas. For all modes, run `references/visual-qa.md`; for objective raster constraints, run `efg verify-image`.
